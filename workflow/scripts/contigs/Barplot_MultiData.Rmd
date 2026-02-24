@@ -1,0 +1,208 @@
+---
+title: "Barplot"
+author: "Yann Le Bihan"
+date: "2026-01-27"
+output: html_document
+---
+# Library
+```{r setup, include=FALSE}
+library(ggplot2)
+library(dplyr)
+library(purrr)
+library(viridis)
+library(tidyverse)
+```
+
+# Settings
+```{r setup, include=FALSE}
+# --- Global settings ---
+data_path <- c("Graph Intersec"= "Statistics/52.Final_Intersection_TaxaName",
+               "Graph 3kb"= "Statistics/3.RPKM_Contigs")
+saving_path <- "Graphique/Barplot"
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Folder creation
+```{r exit folder, warning=FALSE}
+# --- Multi folder creation --
+for (source_name in names(data_path)) {
+  path_to_create <- file.path(saving_path, source_name)
+  if (!dir.exists(path_to_create)) {
+    dir.create(path_to_create, recursive = TRUE)
+    message(paste("Dossier créé :", path_to_create))
+  } else {
+  message(paste("Le dossier existe déjà :", saving_path))
+  }
+}
+```
+
+# Data import
+```{r data import & cleaning}
+# ==========================================================================
+# Data import
+# ==========================================================================
+# --- 1. Function reading files in folder ---
+generate_plots_from_source <- function(data_path, source_label, extension = ".tsv") {
+  
+  cat("--- Traitement de la source :", source_label, "---\n")
+  files <- list.files(path = data_path, pattern = paste0("\\", extension, "$"), full.names = TRUE)
+  
+  if (length(files) == 0) {
+    warning(paste("Aucun fichier trouvé dans", source_label))
+    return(NULL)
+  }
+
+  cat("Trouvé", length(files), "fichiers.\n")
+  
+  # --- 2. Fusion and dataframe enrichment ---
+  df_final <- purrr::map_dfr(files, function(f) {  
+    cat("Lecture de :", basename(f), "\n") 
+    
+    raw_data <- read.delim(f, 
+                           header = TRUE, 
+                           sep = "\t", 
+                           check.names = FALSE, 
+                           quote = "")
+
+    # Store column name for used in plot
+    original_taxon_name <- colnames(raw_data)[1]
+  
+    # Extract metadata from filename: abundance_reads_digesteur_date
+    file_name <- gsub(extension, "", basename(f))
+    parts <- unlist(strsplit(file_name, "_"))
+    
+    # Data cleaning and enrichment
+    raw_data %>%
+      dplyr::mutate(
+        Original_Taxon_Label = original_taxon_name,
+        Source_Type = source_label, # Track source in the dataframe
+        Digesteur     = parts[3],
+        Date_Raw      = parts[4],
+        Date          = as.Date(parts[4], format = "%y%m%d"),
+      )
+  })
+    return (df_final)
+}
+```
+
+#Plots
+```{r pressure, echo=FALSE}
+# ==========================================================================
+# Barplot generation loop
+# ==========================================================================
+# On boucle sur chaque source (Domain, puis Phylum)
+  
+df_final <- purrr::imap_dfr(data_path, function(path, source_name) {
+  
+  # 1. Charger les données
+  data_raw <- generate_plots_from_source(path, source_name)
+  if (is.null(data_raw)) return(NULL)
+
+  # 2. Séparation de la Taxonomie
+  data_taxo <- data_raw %>%
+    tidyr::separate(Taxonomy, 
+                    into = c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species"), 
+                    sep = ";\\s*", 
+                    fill = "right", 
+                    extra = "drop") %>%
+    dplyr::mutate(across(Kingdom:Species, ~tidyr::replace_na(.x, "Unclassified"))) %>%
+    dplyr::mutate(across(Kingdom:Species, ~dplyr::if_else(.x == "" | .x == " ", "Unclassified", .x)))
+
+  # 3. Choix du niveau (ex: Phylum, Class, Family, Genus)
+  target_rank <- "Phylum" 
+
+  # 4. Normalisation et Top 10 par Rang Taxonomique
+ # 4. Normalisation et Top 10 GLOBAL par Digesteur
+  data_processed <- data_taxo %>%
+    dplyr::rename(Taxon = !!sym(target_rank)) %>% 
+    # 1. On somme par Taxon et Date
+    dplyr::group_by(Digesteur, Date, Date_Raw, Taxon, Original_Taxon_Label) %>%
+    dplyr::summarise(RPKM_Sum = sum(RPKM, na.rm = TRUE), .groups = "drop") %>%
+    # 2. On calcule l'abondance relative (%) par échantillon
+    dplyr::group_by(Digesteur, Date) %>%
+    dplyr::mutate(Abundance_Percent = (RPKM_Sum / sum(RPKM_Sum)) * 100) %>%
+    dplyr::ungroup() %>%
+    # 3. IDENTIFICATION DU TOP 10 GLOBAL (par Digesteur sur toute la période)
+    dplyr::group_by(Digesteur, Taxon) %>%
+    dplyr::mutate(Mean_Abundance = mean(Abundance_Percent)) %>% 
+    dplyr::ungroup() %>%
+    dplyr::group_by(Digesteur, Date) %>%
+    # On marque comme "Others" ceux qui ne sont pas dans le Top 10 moyen
+    dplyr::mutate(
+      # On utilise dense_rank sur la moyenne pour fixer le Top 10
+      Taxon_Final = ifelse(Taxon %in% (
+        data_taxo %>% 
+          dplyr::rename(T = !!sym(target_rank)) %>%
+          dplyr::group_by(T) %>% 
+          dplyr::summarise(m = sum(RPKM)) %>% 
+          dplyr::slice_max(m, n = 10) %>% 
+          dplyr::pull(T)
+      ), as.character(Taxon), "Others")
+    ) %>%
+    # 4. On regroupe les "Others"
+    dplyr::group_by(Digesteur, Date, Date_Raw, Taxon_Final, Original_Taxon_Label) %>%
+    dplyr::summarise(Abundance_Percent = sum(Abundance_Percent), .groups = "drop")
+
+  # 5. Boucle de Plot
+  reactors <- unique(data_processed$Digesteur)
+  
+  for (r in reactors) {
+    plot_data <- data_processed %>% dplyr::filter(Digesteur == r)
+  
+    # --- Tri de la légende (Abondance décroissante, Others à la fin) ---
+    taxon_order <- plot_data %>%
+      dplyr::group_by(Taxon_Final) %>%
+      dplyr::summarise(total = sum(Abundance_Percent, na.rm = TRUE)) %>%
+      dplyr::arrange(desc(total)) %>%
+      dplyr::pull(Taxon_Final)
+  
+    # On force "Others" à la fin si présent
+    if ("Others" %in% taxon_order) {
+      taxon_order <- c(setdiff(taxon_order, "Others"), "Others")
+    }
+  
+    plot_data <- plot_data %>%
+      dplyr::mutate(Taxon_Final = factor(Taxon_Final, levels = taxon_order)) %>%
+      dplyr::arrange(Date)
+  
+    # --- Construction du Plot ---
+    current_label <- plot_data$Original_Taxon_Label[1]
+    
+    p <- ggplot(plot_data, aes(x = as.factor(Date), y = Abundance_Percent, fill = Taxon_Final)) +
+      geom_bar(stat = "identity", position = "stack") +
+      scale_fill_viridis_d(option = "turbo") +
+      theme_classic() +
+      labs(
+        title = paste("Abondance :", target_rank, "| Digesteur", r, "| Contigs"),
+        x = "Date",
+        y = "Abondance Relative (%)",
+        fill = target_rank
+      ) +
+      theme(plot.title = element_text(size = 20, face="bold"),
+            axis.title=element_text(size=14,face="bold"),
+            axis.text=element_text(size=10),
+            legend.title=element_text(size=14, face="bold"), 
+            legend.text=element_text(size=12))
+
+    # Sauvegarde
+    save_path <- file.path(saving_path, source_name, paste0("Barplot_", r, "_", target_rank, ".png"))
+    ggsave(save_path, plot = p, width = 12, height = 8, dpi = 300)
+  
+    print(p)
+    cat("✅ Graphique généré :", save_path, "\n")
+  }
+  
+  return(data_taxo) # On retourne les données annotées pour la fusion finale
+})
+  
+#   # --- OPTION. Use this if you don't want to delete previous generated files ---
+#   # if (file.exists(file_path)) {
+#   #   message("Saut : ", r, " est déjà présent dans le dossier.")
+#   #   next }
+#   # message("Création du barplot pour : ", r)
+  
+  #facet_grid(Source_Type ~ Digesteur)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

@@ -1,0 +1,53 @@
+# Chemins des données
+path :
+  data_raw: "data/raw/"
+
+extensions :
+  reads: ".kaijuNR"
+  contigs: ".tsv"
+
+# Graphic parameters
+plots:
+# Global
+  shared:
+    theme: "theme_minimal"
+    width: 10
+    height: 8
+# Plots
+  pca:
+    color_by: "condition"
+    point_size: 2
+    title:
+      size: 12
+    legend:
+      size: 10
+    axes:
+      size: 10
+  heatmap:
+    cluster_rows: True
+    palette: "Viridis"
+  barplot:
+    top_n_taxa: 20
+
+# Reads parameters
+reads:
+  count_threshold: 10
+
+# Contigs parameters
+contigs:
+  length_threshold: 3000
+  reads_threshold: 1000
+  rpkm_threshold: 0.5
+
+# Run parameters
+run_taxonomy: True
+  # Contigs
+run_contigs_counts : True
+run_contigs_filtered : True
+run_contigs_RPKM : True
+run_contigs_RPKM_filter : True
+run_contigs_intersec : True
+  # Plots
+run_barplot: True
+run_heatmap: True
+run_pca: True

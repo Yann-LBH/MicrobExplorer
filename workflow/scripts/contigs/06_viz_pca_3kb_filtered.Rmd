@@ -1,0 +1,270 @@
+---
+title: "ACP_3kb_filtered"
+author: "Yann Le Bihan"
+date: "2025-12-23"
+output: html_document
+---
+
+# Automatisation de la selection des colonnes de métadata et quanti sup quali sup à faire.
+# Librairies
+```{r setup, include=FALSE}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(viridis)
+library(tidyverse)
+library(FactoMineR)
+library(factoextra)
+library(compositions) #CLR
+library(readxl)
+library(missMDA)
+library(vegan)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Settings
+```{r}
+
+# --- Global settings ---
+data_path <- "Statistics/3.RPKM_Contigs"
+saving_folder <- "Graphique/ACP_3kb"
+
+df_physico <- readxl::read_excel("Physico-chimique/Thermophiles.xlsx")
+
+```
+
+# Folder creation
+```{r}
+# --- Folder creation --
+if (!dir.exists(saving_folder)) {
+  dir.create(saving_folder, recursive = TRUE, showWarnings = FALSE)
+  message(paste("Dossier créé :", saving_folder))
+} else {
+  message(paste("Le dossier existe déjà :", saving_folder))
+}
+
+```
+
+# Data import
+```{r cars}
+# ==========================================================================
+# Data import
+# ==========================================================================
+# --- 1. Function reading files in folder ---
+read_complet_folder <- function(data_path, extension = ".txt") {
+  files <- list.files(path = data_path, pattern = paste0("\\", extension, "$"), full.names = TRUE)
+  
+  if (length(files) == 0) {stop("Aucun fichier trouvé dans le dossier spécifié.")}
+  cat("Trouvé", length(files), "fichiers.\n")
+
+  # --- 2. Fusion et enrichissement du dataframe ---
+  df_final <- purrr::map_dfr(files, function(f) {  
+    cat("Lecture de :", basename(f), "\n") 
+    
+  raw_data <- read.table(f, header = TRUE)
+  
+  # Extract metadata from filename: final_sample_date
+    file_name <- gsub(extension, "", basename(f))
+    parts <- unlist(strsplit(file_name, "_"))
+    
+# Data cleaning and enrichment
+    raw_data %>%
+      dplyr::mutate(
+        Original_File = file_name,
+        Digesteur     = parts[3],
+        Date_Raw      = parts[4],
+        Date          = as.Date(parts[4], format = "%y%m%d")
+      )
+  })
+  
+  return(df_final)
+}
+
+# --- Execute data loading ---
+df_final <- read_complet_folder(data_path)
+
+```
+
+# Treatment et CLR
+```{r}
+# --- Prepare wide table ---
+tableau_large <- df_final %>%
+  select(Date, Date_Raw, Digesteur, RPKM, Contig_ID) %>%
+  # filter(!stringr::str_detect(order, "_u")) %>%
+  # drop_na(order) %>%
+  mutate(RPKM = as.numeric(as.character(RPKM))) %>%
+  # mutate(label_taxon = paste(order, tax_id, sep = "_")) %>%
+  # select(-RPKM, -Contig_ID) %>% 
+  pivot_wider(names_from = Contig_ID, values_from = RPKM, values_fill = 0, values_fn = sum) %>%
+  select(-any_of("Other_NA"))
+
+# --- Metadata and PCA data ---
+metadata <- tableau_large[, 1:3]
+data_pca <- tableau_large[, -(1:3)]
+
+# --- CLR transformation ---
+data_pca_no_zero <- data_pca + 1
+donnees_clr <- compositions::clr(data_pca_no_zero)
+donnees_pretes <- as.data.frame(as.matrix(donnees_clr))
+
+# --- Physico-chemical data ---
+df_physico_num <- df_physico %>% 
+  select("pH", "AGV mg/l") %>%
+  mutate(across(c("pH", "AGV mg/l"), ~ as.numeric(gsub(",", ".", .))))
+
+# --- Imputation ---
+nb <- estim_ncpPCA(df_physico_num, ncp.max = 3)
+res.impute <- imputePCA(df_physico_num, ncp = nb$ncp)
+df_physico_complet <- res.impute$completeObs
+
+# --- Final PCA table ---
+final_tab_pca <- cbind(donnees_pretes, df_physico_complet, Digesteur = metadata$Digesteur)
+
+```
+
+# Plots
+
+```{r pressure, echo=FALSE}
+
+# --- Run PCA ---
+n_taxons <- ncol(donnees_pretes)
+index_quanti_sup <- (n_taxons + 1):(n_taxons + 2)  # pH et AGV
+index_quali_sup <- n_taxons + 3  # Digesteur
+
+res.pca <- PCA(final_tab_pca, 
+               quanti.sup = index_quanti_sup,
+               quali.sup = index_quali_sup,
+               graph = FALSE)
+
+# --- Top 10 taxons ---
+top10_taxons <- names(sort(res.pca$var$contrib[,1]+ res.pca$var$contrib[,2], decreasing = TRUE)[1:10])
+mes_params <- colnames(final_tab_pca)[index_quanti_sup]
+selection_finale <- c(top10_taxons, mes_params)
+
+# --- Variance plot ---
+Variance <- fviz_eig(res.pca, addlabels = TRUE)
+print(Variance)
+
+# --- Prepare data for biplot ---
+metadata$Date <- as.factor(metadata$Date)
+metadata$Digesteur <- as.factor(metadata$Digesteur)
+
+# Nombre de dates et digesteurs
+n_dates <- length(unique(metadata$Date))
+n_digesteurs <- length(unique(metadata$Digesteur))
+
+# Création d'une variable combinée pour le mapping
+metadata$Date_Shape <- as.numeric(metadata$Date)
+
+# --- Biplot amélioré ---
+ACP <- fviz_pca_biplot(res.pca, 
+                       # Individus - ne pas afficher par défaut
+                       geom.ind = "none",
+                       
+                       # Variables
+                       col.var = "black",
+                       col.quanti.sup = "blue",
+                       select.var = list(name = selection_finale),
+                       
+                       # Esthétique
+                       #addEllipses = TRUE,
+                       #ellipse.type = "confidence",
+                       habillage = index_quali_sup,
+                       mean.point = FALSE,
+                       repel = TRUE,
+                       title = "ACP avec transformation CLR - Top 10 taxons") +
+  
+  # Ajout des points avec formes et couleurs
+  geom_point(data = as.data.frame(res.pca$ind$coord),
+             aes(x = Dim.1, 
+                 y = Dim.2, 
+                 shape = metadata$Date, 
+                 color = metadata$Digesteur), 
+             size = 4,
+             alpha = 0.8) +
+  
+  # Formes pour les dates
+  scale_shape_manual(values = c(16, 17, 15)[1:n_dates], 
+                     name = "Dates",
+                     labels = levels(metadata$Date)
+                     ) +
+  
+  # Couleurs pour les digesteurs
+  scale_color_manual(values = c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00", "#FFC0CB")[1:n_digesteurs], 
+                     name = "Digesteurs",
+                     labels = levels(metadata$Digesteur)
+                     ) +
+  
+  theme_minimal() +
+  theme(legend.position = "right")
+  ACP$layers <- rev(ACP$layers)
+
+print(ACP)
+
+ # --- Sauvegarde ---
+  ggsave(filename = file.path(saving_folder, "ACP_CLR_Top10.png"), 
+         plot = ACP, 
+         width = 12, 
+         height = 8, 
+         dpi = 300)
+ 
+ ggsave(filename = file.path(saving_folder, "Variance_explained.png"), 
+        plot = Variance, 
+        width = 8, 
+        height = 6, 
+        dpi = 300)
+ 
+ # --- Tableau des contributions des top 10 ---
+ contrib_top10 <- res.pca$var$contrib[top10_taxons, 1:5]
+ write.csv2(contrib_top10, 
+            file = file.path(saving_folder, "contributions_top10_taxons.csv"),
+            row.names = TRUE)
+
+cat("\n✓ Graphiques sauvegardés dans:", saving_folder, "\n")
+```
+
+# Permanova
+```{r}
+# Test sur l'effet Digesteur
+permanova_digesteur <- adonis2(donnees_pretes ~ Digesteur, 
+                               data = metadata, 
+                               method = "euclidean", 
+                               permutations = 999)
+
+# Test sur l'effet Date
+permanova_date <- adonis2(donnees_pretes ~ Date_Raw, 
+                          data = metadata, 
+                          method = "euclidean", 
+                          permutations = 999)
+
+print(permanova_digesteur)
+print(permanova_date)
+
+disper <- betadisper(vegdist(donnees_pretes, method = "euclidean"), metadata$Digesteur)
+anova(disper)
+
+res_digesteur <- as.data.frame(permanova_digesteur)
+res_date <- as.data.frame(permanova_date)
+res_disper <- as.data.frame(anova(disper)) # On prend l'ANOVA du disper
+
+# 2. Ajouter une colonne pour identifier chaque test
+# On l'ajoute au début du tableau
+res_digesteur <- cbind(Test = "PERMANOVA Digesteur", Variable = rownames(res_digesteur), res_digesteur)
+res_date <- cbind(Test = "PERMANOVA Date", Variable = rownames(res_date), res_date)
+res_disper <- cbind(Test = "DISPERSION (Betadisper)", Variable = rownames(res_disper), res_disper)
+
+# 3. Empiler les tableaux (l'un au-dessus de l'autre)
+# On utilise plyr::rbind.fill ou dplyr::bind_rows car les colonnes peuvent varier
+export_final <- bind_rows(res_digesteur, res_date, res_disper)
+  
+ write.csv2(export_final, 
+            file = file.path(saving_folder, "export_final.csv"),
+            row.names = TRUE)
+
+cat("\n✓ Permanova sauvegardés dans:", saving_folder, "\n")
+```
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
