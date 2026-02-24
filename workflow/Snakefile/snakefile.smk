@@ -22,10 +22,10 @@ if config.get("run_contigs_counts", False):
     final_targets.extend(expand("results/counts/contigs/1.Raw_Counting/{sample}_counts.tsv", sample=SAMPLES_CONTIGS))
 if config.get("run_contigs_filtered", False):
     final_targets.extend(expand("results/counts/contigs/2.Filtered/{sample}_filtered.tsv", sample=SAMPLES_CONTIGS))
-if config.get("run_contigs_RPKM", False):
-    final_targets.extend(expand("results/counts/contigs/3.RPKM/{sample}_RPKM.tsv", sample=SAMPLES_CONTIGS))
-if config.get("run_contigs_RPKM_filter", False):
-    final_targets.extend(expand("results/counts/contigs/4.RPKM_Filtered/{sample}_RPKM_filtered.tsv", sample=SAMPLES_CONTIGS))
+if config.get("run_contigs_rpkm", False):
+    final_targets.extend(expand("results/counts/contigs/3.rpkm/{sample}_rpkm.tsv", sample=SAMPLES_CONTIGS))
+if config.get("run_contigs_rpkm_filter", False):
+    final_targets.extend(expand("results/counts/contigs/4.rpkm_Filtered/{sample}_rpkm_filtered.tsv", sample=SAMPLES_CONTIGS))
 if config.get("run_contigs_intersec", False):
     final_targets.extend(expand("results/counts/contigs/5.Intersection/{sample}_counts.tsv", sample=SAMPLES_CONTIGS))
 
@@ -66,7 +66,7 @@ rule contigs_counts:
         raw_data = "data/raw/{sample}.tsv"
     output:
         counts = "results/counts/contigs/1.Raw_Counting/{sample}_counts.tsv"
-        step_checking = "report/check_steps/{sample}_abundance_check.tsv"
+        step_checking = "report/visual_check/{sample}_counts.tsv"
     log:
         "results/logs/contigs/{sample}_filter.log"
     params : 
@@ -81,7 +81,7 @@ rule contigs_filtered:
         data = expand("results/counts/contigs/1.Raw_Counting/{sample}_counts.tsv", sample=SAMPLES_CONTIGS)
     output:
         filtered ="results/counts/contigs/2.Filtered/{sample}_filtered.tsv"
-        step_checking = "report/check_steps/{sample}_abundance_check.tsv"
+        step_checking = "report/visual_check/{sample}_filtered.tsv"
     log:
         "results/logs/contigs/{sample}_filtered.log"
     params : 
@@ -91,41 +91,42 @@ rule contigs_filtered:
     script:
         "../scripts/contigs/02_contigs_filter.py"
 # ----------------- Step 3
-rule contigs_RPKM:
+rule contigs_rpkm:
     input:
         data = "results/counts/contigs/2.Filtered/{sample}_filtered.tsv"
     output:
-        rpkm ="results/counts/contigs/3.RPKM/{sample}_RPKM.tsv"
-        step_checking = "report/check_steps/{sample}_abundance_check.tsv"
+        rpkm ="results/counts/contigs/3.rpkm/{sample}_rpkm.tsv"
+        step_checking = "report/visual_check/{sample}_rpkm.tsv"
     log:
-        "results/logs/contigs/{sample}_RPKM.log"
+        "results/logs/contigs/{sample}_rpkm.log"
     conda:
         "envs/python_env.yaml"
     script:
-        "../scripts/contigs/03_contigs_RPKM.py"
+        "../scripts/contigs/03_contigs_rpkm.py"
 # ----------------- Step 4
-rule contigs_RPKM_filter:
+rule contigs_rpkm_filter:
     input:
-        data = expand("results/counts/contigs/3.RPKM/{sample}_RPKM.tsv", sample=SAMPLES_CONTIGS)
+        data = expand("results/counts/contigs/3.rpkm/{sample}_rpkm.tsv", sample=SAMPLES_CONTIGS)
     output:
-        rpkm_filtered ="results/counts/contigs/4.RPKM_Filtered/{sample}_RPKM_filtered.tsv"
-        step_checking = "report/check_steps/{sample}_abundance_check.tsv"
+        rpkm_filtered ="results/counts/contigs/4.rpkm_Filtered/{sample}_rpkm_filtered.tsv"
+        step_checking = "report/visual_check/{sample}_rpkm_filtered.tsv"
     log:
-        "results/logs/contigs/{sample}_RPKM_trimming.log"
+        "results/logs/contigs/{sample}_rpkm_trimming.log"
     params : 
         rpkm_threshold = config["contigs"]["rpkm_threshold"]
     conda:
         "envs/python_env.yaml"
     script:
-        "../scripts/contigs/04_contigs_RPKM_filter.py"
+        "../scripts/contigs/04_contigs_rpkm_filter.py"
 # ----------------- Step 5
 rule contigs_intersec:
     input:
-        "results/counts/contigs/4.RPKM_Filtered/{sample}_RPKM_filtered.tsv"
+        data = expand("results/counts/contigs/4.rpkm_Filtered/{sample}_rpkm_filtered.tsv", sample=SAMPLES_CONTIGS)
     output:
-        "results/counts/contigs/5.Intersection/{sample}_counts.tsv"
+        intersec = "results/counts/contigs/5.Intersection/{sample}_counts.tsv"
+        step_checking = "report/visual_check/{sample}_intersec.tsv"
     log:
-        "results/logs/contigs/{sample}_intersection.log"
+        "results/logs/contigs/{sample}_intersec.log"
     conda:
         "envs/python_env.yaml"
     script:

@@ -1,6 +1,13 @@
 import random
 import os
 
+# Shutdown VScode warnings
+try:
+    snakemake
+except NameError:
+    from types import SimpleNamespace
+    snakemake = SimpleNamespace(input=SimpleNamespace(), output=SimpleNamespace(), params=SimpleNamespace(), wildcards=SimpleNamespace())
+
 # --- RÉCUPÉRATION DES VARIABLES SNAKEMAKE ---
 path_in = snakemake.input.data
 current_file = [f for f in path_in if snakemake.wildcards.sample in f][0]
@@ -14,9 +21,9 @@ def get_total_RPKM(path_in):
     min_rpkm_counts = {}
     first_file = True
     
-    for path in files :
+    for path in path_in:
         current_file_contigs = {}
-        with open(path_in, 'r', encoding='utf-8') as f:              
+        with open(path, 'r', encoding='utf-8') as f:              
             for line in f:
                 colums = line.strip().split('\t')
                 if len(colums) >= 4:

@@ -1,6 +1,13 @@
 import random
 import os
 
+# Shutdown VScode warnings
+try:
+    snakemake
+except NameError:
+    from types import SimpleNamespace
+    snakemake = SimpleNamespace(input=SimpleNamespace(), output=SimpleNamespace(), params=SimpleNamespace(), wildcards=SimpleNamespace())
+
 # --- RÉCUPÉRATION DES VARIABLES SNAKEMAKE ---
 path_in = snakemake.input.data
 # On identifie le fichier spécifique à cet échantillon (wildcard {sample})
