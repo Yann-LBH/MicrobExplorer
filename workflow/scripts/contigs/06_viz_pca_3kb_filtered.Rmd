@@ -26,8 +26,9 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Settings
 ```{r}
-
 # --- Global settings ---
+data_path <- snakemake@input
+saving_folder <- snakemake@output[["rds"]]
 data_path <- "Statistics/3.RPKM_Contigs"
 saving_folder <- "Graphique/ACP_3kb"
 

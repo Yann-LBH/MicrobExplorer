@@ -1,176 +1,133 @@
 import pandas as pd
 configfile: "../../../config/config.yaml"
 
+# Lecture des échantillons
 metadata = pd.read_csv("config/samples.tsv", sep="\t")
+SAMPLES = metadata['sample'].tolist() 
 
-DATA_DIR = config["paths"]["data_raw"]
-EXT_READS = config["extensions"]["reads"]
-EXT_CONTIGS = config["extensions"]["contigs"]
-
-# Crée une liste vide pour les cibles
+# --- Configuration des cibles (Targets) ---
 final_targets = []
 
-# Ajoute les counts (toujours nécessaires)
-final_targets.extend(expand("results/counts/contigs/{sample}_counts.csv", sample=SAMPLES_CONTIGS))
-
-# Taxonomomie
-if config.get("run_taxonomy", False):
+# Taxonomie
+if config.get("run_taxonomy"):
     final_targets.append("data/taxonomy/formatted_taxo.tsv")
 
 # Contigs processing
-if config.get("run_contigs_counts", False):
-    final_targets.extend(expand("results/counts/contigs/1.Raw_Counting/{sample}_counts.tsv", sample=SAMPLES_CONTIGS))
-if config.get("run_contigs_filtered", False):
-    final_targets.extend(expand("results/counts/contigs/2.Filtered/{sample}_filtered.tsv", sample=SAMPLES_CONTIGS))
-if config.get("run_contigs_rpkm", False):
-    final_targets.extend(expand("results/counts/contigs/3.rpkm/{sample}_rpkm.tsv", sample=SAMPLES_CONTIGS))
-if config.get("run_contigs_rpkm_filter", False):
-    final_targets.extend(expand("results/counts/contigs/4.rpkm_Filtered/{sample}_rpkm_filtered.tsv", sample=SAMPLES_CONTIGS))
-if config.get("run_contigs_intersec", False):
-    final_targets.extend(expand("results/counts/contigs/5.Intersection/{sample}_counts.tsv", sample=SAMPLES_CONTIGS))
+# Dictionnaire des étapes de processing
+CONTIGS_STEPS = {
+    "1.Raw_Counting":   ["01_contigs_counting_raw.py",  "data/raw/{sample}.tsv"],
+    "2.Filtered":       ["02_contigs_filter.py",        "results/counts/contigs/1.Raw_Counting/{sample}_counts.tsv"],
+    "3.rpkm":           ["03_contigs_rpkm.py",          "results/counts/contigs/2.Filtered/{sample}_filtered.tsv"],
+    "4.rpkm_Filtered":  ["04_contigs_rpkm_filter.py",   "results/counts/contigs/3.rpkm/{sample}_rpkm.tsv"],
+    "5.Intersection":   ["05_contigs_intersec.py",      "results/counts/contigs/4.rpkm_Filtered/{sample}_rpkm_filtered.tsv"],
+    "6.Final_Results":  ["06_contigs_add_taxaname.py",  "results/counts/contigs/5.Intersection/{sample}_intersec.tsv"]
+}
+
+READS_STEPS = {
+    "1.Raw_Counting":   ["01_reads_counting_raw.py",  "data/raw/{sample}.tsv"],
+    "2.Filtered":       ["02_reads_filter.py",        "results/counts/reads/1.Raw_Counting/{sample}_counts.tsv"],
+    "3.Final_Results":  ["03_reads_add_taxaname.py",  "results/counts/reads/2.Filtered/{sample}_filtered.tsv"]
+}
 
 # Plots
-if config.get("run_barplot", False):
-    final_targets.append("results/barplot.png")
-if config.get("run_heatmap", False):
-    final_targets.append("results/heatmap.png")
-if config.get("run_pca", False):
-    final_targets.append("results/pca_plot.png")
+PLOT_CONFIG = {
+    "barplot": ["07_barplot.R", "data/processed/barplots_data.rds"],
+    "heatmap": ["08_heatmap.R", "data/processed/all_samples_consolidated.rds"],
+    "pca":     ["09_ACP.R",     "data/processed/all_samples_consolidated.rds"],
+    "volcano": ["10_volcano.R", "data/processed/deseq2_results.rds"]
+}
+
+PLOT_TYPES = ["barplot", "heatmap", "pca", "volcano"]
+for plot_type in PLOT_TYPES:
+    if config.get(f"run_{plot_type}"):
+        final_targets.append(f"results/plots/{plot_type}.png")
 
 if not SAMPLES_READS and not SAMPLES_CONTIGS:
     raise ValueError(f"Aucun fichier trouvé dans {DATA_DIR} avec les extensions {EXT_READS} ou {EXT_CONTIGS}")
+
+for opt, path in CONTIGS_STEPS.items():
+    if config.get(opt): final_targets.extend(expand(f"results/counts/contigs/{path}", sample=SAMPLES))
 
 # ---------------------------------------------------------------------------- Final targets
 rule all:
     input: final_targets
 
 # ---------------------------------------------------------------------------- Taxanomie table processing        
-rule download_ncbi:
-    output:
-        temp("data/taxonomy/ncbi_dump.tar.gz") # Sera supprimé après la règle suivante
-    shell:
-        "wget ftp://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz -O {output}"
-
-rule convert_taxo:
-    input:
-        "data/taxonomy/ncbi_dump.tar.gz"
-    output:
-        "data/taxonomy/formatted_taxo.tsv" # Ce fichier-là est conservé
-    script:
-        "scripts/convert_ncbi.py"
+rule taxonomy_full:
+    output: "data/taxonomy/formatted_taxo.tsv"
+    shell: 
+        "wget ftp://ftp.ncbi.nlm.nih.gov/pub/taxonomy/taxdump.tar.gz -O - | tar -xz && "
+        "python scripts/convert_ncbi.py"
 
 # ---------------------------------------------------------------------------- Processing
-# ----------------- Step 1
-rule contigs_counts:
-    input:
-        raw_data = "data/raw/{sample}.tsv"
-    output:
-        counts = "results/counts/contigs/1.Raw_Counting/{sample}_counts.tsv"
-        step_checking = "report/visual_check/{sample}_counts.tsv"
-    log:
-        "results/logs/contigs/{sample}_filter.log"
-    params : 
-        length_threshold = config["contigs"]["length_threshold"]
-    conda:
-        "envs/python_env.yaml"
-    script:
-        "../scripts/contigs/01_contigs_counting_raw.py"
-# ----------------- Step 2
-rule contigs_filtered:
-    input:
-        data = expand("results/counts/contigs/1.Raw_Counting/{sample}_counts.tsv", sample=SAMPLES_CONTIGS)
-    output:
-        filtered ="results/counts/contigs/2.Filtered/{sample}_filtered.tsv"
-        step_checking = "report/visual_check/{sample}_filtered.tsv"
-    log:
-        "results/logs/contigs/{sample}_filtered.log"
-    params : 
-        reads_threshold = config["contigs"]["reads_threshold"]
-    conda:
-        "envs/python_env.yaml"
-    script:
-        "../scripts/contigs/02_contigs_filter.py"
-# ----------------- Step 3
-rule contigs_rpkm:
-    input:
-        data = "results/counts/contigs/2.Filtered/{sample}_filtered.tsv"
-    output:
-        rpkm ="results/counts/contigs/3.rpkm/{sample}_rpkm.tsv"
-        step_checking = "report/visual_check/{sample}_rpkm.tsv"
-    log:
-        "results/logs/contigs/{sample}_rpkm.log"
-    conda:
-        "envs/python_env.yaml"
-    script:
-        "../scripts/contigs/03_contigs_rpkm.py"
-# ----------------- Step 4
-rule contigs_rpkm_filter:
-    input:
-        data = expand("results/counts/contigs/3.rpkm/{sample}_rpkm.tsv", sample=SAMPLES_CONTIGS)
-    output:
-        rpkm_filtered ="results/counts/contigs/4.rpkm_Filtered/{sample}_rpkm_filtered.tsv"
-        step_checking = "report/visual_check/{sample}_rpkm_filtered.tsv"
-    log:
-        "results/logs/contigs/{sample}_rpkm_trimming.log"
-    params : 
-        rpkm_threshold = config["contigs"]["rpkm_threshold"]
-    conda:
-        "envs/python_env.yaml"
-    script:
-        "../scripts/contigs/04_contigs_rpkm_filter.py"
-# ----------------- Step 5
-rule contigs_intersec:
-    input:
-        data = expand("results/counts/contigs/4.rpkm_Filtered/{sample}_rpkm_filtered.tsv", sample=SAMPLES_CONTIGS)
-    output:
-        intersec = "results/counts/contigs/5.Intersection/{sample}_counts.tsv"
-        step_checking = "report/visual_check/{sample}_intersec.tsv"
-    log:
-        "results/logs/contigs/{sample}_intersec.log"
-    conda:
-        "envs/python_env.yaml"
-    script:
-        "../scripts/contigs/05_contigs_intersec_filtered.py"
+rule contigs_processing:
+    input: lambda w: CONTIGS_STEPS[w.step][1].format(sample=w.sample)
+    output: 
+        result = "results/counts/contigs/{step}/{sample}_{name}.tsv",
+        check  = "report/visual_check/{sample}_{name}.tsv"
+    params: threshold = config["contigs"]["length_threshold"]
+    conda: "envs/python_env.yaml"
+    script: lambda w: f"../scripts/contigs/{CONTIGS_STEPS[w.step][0]}"
+
+rule reads_processing:
+    input: lambda w: RREADS_STEPS[w.step][1].format(sample=w.sample)
+    output: 
+        counts = "results/counts/contigs/{step}/{sample}_{name}.tsv",
+        check  = "report/visual_check/{sample}_{name}.tsv"
+    params: threshold = config["contigs"]["length_threshold"]
+    conda: "envs/python_env.yaml"
+    script: lambda w: f"../scripts/contigs/{RREADS_STEPS[w.step][0]}"
 # ---------------------------------------------------------------------------- Plotting
-rule barplot:
-    input:
-        counts = "results/counts.csv"
-    output:
-        barplot = "results/barplot.pdf"
-    params:
-        barplot_color = config["plots"]["barplot"]["color_by"]
-    conda:
-        "envs/r_env.yaml"
-    script:
-        "scripts/08_barplot_DNA.R"
+# --- 1. Préparation pour les Barplots (données Step 2) ---
+rule prepare_barplot_data:
+    input:  expand("results/counts/contigs/2.Filtered/{sample}_filtered.tsv", sample=SAMPLES)
+    output: "data/processed/barplots_data.rds"
+    script: "../scripts/utils/prep_barplots.R"
 
-rule plot_heatmap:
-    input:
-        data = "results/counts.csv"
-    output:
-        heatmap = "results/heatmap.png"
-    params:
-        color = config["plots"]["heatmap"]["color_by"]
-        size = config["plots"]["heatmap"]["size"]
-        method = config["plots"]["heatmap"]["method"]
-    conda:
-        "envs/r_env.yaml"
-    script:
-        "scripts/09_heatmap.R"
+# --- 2. Préparation pour Analyse Différentielle (Volcano) ---
+rule run_deseq2:
+    input:  expand("results/counts/contigs/6.Final_Results/{sample}_intersec.tsv", sample=SAMPLES)
+    output: "data/processed/deseq2_results.rds"
+    script: "../scripts/utils/run_deseq2.R"
 
-rule plot_pca:
+# Règle générique pour les plots
+rule generate_plots:
     input:
-        counts = "results/counts.csv"
+        rds = lambda w: PLOT_CONFIG[w.plot_name][1]
     output:
-        pca = "results/pca_plot.png"
-    params:
-        pca_color = config["plots"]["pca"]["color_by"]
+        fig = "results/plots/{plot_name}.png"
+    params: 
+        color   = lambda w: config["plots"].get(w.plot_name, {}).get("color_by"),
+        size    = lambda w: config["plots"].get(w.plot_name, {}).get("size"),
+        method  = lambda w: config["plots"].get(w.plot_name, {}).get("method")
     conda:
         "envs/r_env.yaml"
     script:
-        "scripts/10_pca.R"    
+        lambda w: f"../scripts/plotting/{PLOT_CONFIG[w.plot_name][0]}"
+        "Rscript -e 'renv::restore(); source(\"scripts/plotting/07_barplot.R\")'"
+
+
+
+
+
+
+
+
+
+
+
+rule generate_plots:
+    input:  lambda w: PLOTS[w.plot_name][1]
+    output: fig = "results/plots/{plot_name}.png"
+    params: color   = lambda w: config["plots"].get(w.plot_name, {}).get("color_by"),
+            size    = lambda w: config["plots"].get(w.plot_name, {}).get("size"),
+            method  = lambda w: config["plots"].get(w.plot_name, {}).get("method")
+    conda:  "envs/r_env.yaml"
+    script: "scripts/plotting/{w.plot_name}.R"
         
-        # output: directory("results/taxonomie_complete") # On déclare le dossier entier comme sortie
+
+
+
         
 rule process_reads:
     input: "data/raw/reads.kaiju"

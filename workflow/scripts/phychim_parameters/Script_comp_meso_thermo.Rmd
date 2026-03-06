@@ -1,0 +1,219 @@
+---
+title: "Variations de différents paramètres physico-chimiques au sein d'une grappe
+  de digesteurs mésophile et thermophile de Seine Aval."
+author: "Yann Le Bihan"
+date: "2025-12-10"
+output:
+  word_document: default
+  html_document: default
+subtitle: "Période mai-novembre 2025"
+---
+```{r setup, include=FALSE}
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(patchwork)
+library(purrr)
+
+# ==========================================================================
+# CONFIGURATION GÉNÉRALE
+# ==========================================================================
+
+# Charte graphique
+couleurs_lignes <- c("Mésophile" = "#4DBBD5", 
+                     "Thermophile" = "#E64B35")
+couleurs_remplissage <- c("Ecart-Type" = "#8491B4")
+guide_style <- list(title.position = "top", title.hjust = 0.5)
+
+#-- mapping --#
+mapping_column <- c(
+  "Date_Prelevement" = "Date du prélèvement",
+  "Digesteur" = "Lieu du prélèvement",
+  "AGV" = "AGV mg/l",
+  "TAC" = "TAC mg(caco3)/l",
+  "MS" = "MS %",
+  "MV" = "MV %MS")
+
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE)
+```
+Traitement des données
+```{r cars}
+#-- Import data --#
+df_meso <- read_excel("C:/Users/ylebihan/Desktop/Data analyse Stage/Physico-Chim 08-12-2025/Script_dev/data/Mesophiles.xlsx")
+df_thermo <- read_excel("C:/Users/ylebihan/Desktop/Data analyse Stage/Physico-Chim 08-12-2025/Script_dev/data/Thermophiles.xlsx")
+
+#-- Cleaning --#
+cleaning_dataframe <- function(df_raw, mapping_column, mapping_name) {
+
+# 1. Sélection et Renommage Automatique
+df_clean <- df_raw %>%
+  dplyr::select(where(~!all(is.na(.)))) %>%
+  dplyr::select(c(unname(mapping_column), "pH")) %>%
+  dplyr::rename(!!!mapping_column) %>%
+
+  # On force la colonne 'Valeur' au format numérique, les données autre seront automatiquement converties en NA
+  dplyr::mutate(
+    dplyr::across(
+        .cols = c(AGV, TAC, MS, MV, pH),
+        .fns = ~ readr::parse_number(as.character(.x))
+      )
+    )
+    return(df_clean)
+}
+
+# 2. Création du tableau nettoyé
+df_meso_clean <- cleaning_dataframe(df_meso, mapping_column, mapping_name)
+df_thermo_clean <- cleaning_dataframe(df_thermo, mapping_column, mapping_name)
+
+calculer_stats <- function(df_input, type_digesteur) {
+  # Calcul moyenne et écart-type
+  df_stats <- df_input %>%
+    dplyr::group_by(Date_Prelevement) %>%
+    dplyr::summarise(
+      dplyr::across(
+        c(pH, AGV, TAC, MS, MV), 
+        list(
+          Moyenne = ~mean(., na.rm = TRUE), 
+          EcartType = ~sd(., na.rm = TRUE)
+        ),
+        .names = "{col}_{fn}"
+      ),
+      .groups = 'drop'
+    ) %>%
+    dplyr::mutate(
+      # Calcul du Ratio AGV/TAC
+      Ratio_AGV_TAC_Moyenne = AGV_Moyenne / TAC_Moyenne,
+      Ratio_AGV_TAC_EcartType = sqrt(
+        (AGV_EcartType / TAC_Moyenne)^2 +
+        (AGV_Moyenne * TAC_EcartType / TAC_Moyenne^2)^2
+      ),
+      # Identification du type de digesteur
+      Type_Digesteur = type_digesteur
+    )
+  return(df_stats)
+}
+
+# Calcul des stats pour chaque condition
+df_stats_meso <- calculer_stats(df_meso_clean, "Mésophile")
+df_stats_thermo <- calculer_stats(df_thermo_clean, "Thermophile")
+# Fusion des deux dataframes
+df_final_plot <- dplyr::bind_rows(df_stats_meso, df_stats_thermo)
+
+# ==========================================================================
+# CRÉATION DES GRAPHIQUES
+# ==========================================================================
+# 1. Création d'un tableau de configuration
+config_graphiques <- tribble(
+  ~var_moy,                 ~var_sd,                   ~label_y,             ~ylim,      ~seuil,
+  "pH_Moyenne",             "pH_EcartType",             "pH",                 c(6, 8),    NULL,
+  "AGV_Moyenne",            "AGV_EcartType",            "AGV (mg/L)",         c(0, 200),  NULL,
+  "TAC_Moyenne",            "TAC_EcartType",            "TAC (mg(CaCO₃)/L)",  c(0, 6000), NULL,
+  "MS_Moyenne",             "MS_EcartType",             "MS (%)",             c(0, 5),    NULL,
+  "MV_Moyenne",             "MV_EcartType",             "MV (% MS)",          c(0, 100),  NULL,
+  "Ratio_AGV_TAC_Moyenne",  "Ratio_AGV_TAC_EcartType",  "Ratio AGV/TAC",      c(0, 0.5),  0.2
+)
+
+creer_graphique <- function(data, var_moy, var_sd, label_y, 
+                            show_legend = TRUE, y_limites = NULL, 
+                            ligne_seuil = NULL) {
+  
+  p <- ggplot2::ggplot(data, aes(x = Date_Prelevement)) +
+    
+    # Ruban d'écart-type
+    ggplot2::geom_ribbon(aes(
+        ymin = !!rlang::sym(var_moy) - !!rlang::sym(var_sd), 
+        ymax = !!rlang::sym(var_moy) + !!rlang::sym(var_sd),
+        fill = Type_Digesteur,
+        group = Type_Digesteur), alpha = 0.2) +
+    
+    # Lignes des moyennes
+    ggplot2::geom_line(aes(
+        y = !!rlang::sym(var_moy), 
+        color = Type_Digesteur,
+        group = Type_Digesteur), linewidth = 1.2) +
+    
+    # Ligne de seuil si spécifiée
+    {if (!is.null(ligne_seuil)) {
+      ggplot2::geom_hline(
+        yintercept = ligne_seuil, 
+        color = "red", 
+        linewidth = 1, 
+        linetype = "dashed")}
+    } +
+    
+    # Correction de l'opacité (pour forcer le carré de la légende à être clair)
+    guides(colour   = do.call(guide_legend, c(list(order = 1), guide_style)),
+           fill     = do.call(guide_legend, c(list(override.aes = list(alpha = 0.3), order = 2), guide_style))
+           ) + # Affiche la ligne noire
+ 
+    
+    # Échelles de couleurs
+    ggplot2::scale_colour_manual(
+      name = "Condition",
+      values = couleurs_lignes
+    ) +
+    ggplot2::scale_fill_manual(
+      name = "",
+      values = couleurs_remplissage
+    ) +
+    
+    # Labels et thème
+    ggplot2::labs(x = "Date de prélèvement", y = label_y) +
+    ggplot2::theme_light() +
+    ggplot2::theme(
+      legend.position = if(show_legend) "right" else "none",
+      legend.title = element_text(face = "bold", size = 25),
+      legend.text = element_text(size = 20),
+      plot.margin = unit(c(10, 10, 10, 10), "pt"),
+      panel.grid.minor = element_blank(),
+    )
+  
+  # Limites de l'axe Y si spécifiées
+  if (!is.null(y_limites)) {
+    p <- p + ggplot2::coord_cartesian(ylim = y_limites)
+  }
+  
+  return(p)
+}
+liste_graphiques <- purrr::pmap(config_graphiques, function(var_moy, var_sd, label_y, ylim, seuil) {
+  creer_graphique(
+    data = df_final_plot, # Toujours le même dataset
+    var_moy = var_moy,
+    var_sd = var_sd,
+    label_y = label_y,
+    y_limites = ylim,
+    ligne_seuil = seuil,
+    show_legend = TRUE
+  )
+})
+# ==========================================================================
+# COMPOSITION FINALE
+# ==========================================================================
+composition_complete <- patchwork::wrap_plots(liste_graphiques, ncol = 2) +
+  patchwork::plot_layout(guides = 'collect') +
+  patchwork::plot_annotation(
+    title = "Évolution des paramètres physico-chimiques de référence dans les digesteurs\nmésophiles et thermophiles au cours du temps",
+    theme = ggplot2::theme(plot.title = element_text(face = "bold", size = 18, hjust = 0.5))) &
+  ggplot2::theme(legend.position = "bottom")
+```
+Graphiques
+```{r pressure, fig.show='hide', fig.width=16, fig.height=12, fig.align='center'}
+
+# Affichage
+composition_complete
+
+# Sauvegarde
+ggplot2::ggsave(
+  filename = "Comparaison_Meso_Thermo.png",
+  plot = composition_complete,
+  device = "png",
+  width = 15,
+  height = 9,
+  units = "in",
+  dpi = 600
+)
+```

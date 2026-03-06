@@ -5,8 +5,36 @@ path :
 extensions :
   reads: ".kaijuNR"
   contigs: ".tsv"
+################
+# Run parameters
+################
+run_taxonomy: True
+  # Contigs
+run_contigs_counts : True
+run_contigs_filtered : True
+run_contigs_RPKM : True
+run_contigs_RPKM_filter : True
+run_contigs_intersec : True
+  # Plots
+run_barplot: True
+run_heatmap: True
+run_pca: True
+####################
+# General parameters
+####################
+deseq_label: "Genus"  # Options possibles : "Contig_ID", "Phylum", "Genus", etc.
+# Reads parameters
+reads:
+  count_threshold: 10
 
+# Contigs parameters
+contigs:
+  length_threshold: 3000
+  reads_threshold: 1000
+  rpkm_threshold: 0.5
+####################
 # Graphic parameters
+####################
 plots:
 # Global
   shared:
@@ -29,25 +57,3 @@ plots:
   barplot:
     top_n_taxa: 20
 
-# Reads parameters
-reads:
-  count_threshold: 10
-
-# Contigs parameters
-contigs:
-  length_threshold: 3000
-  reads_threshold: 1000
-  rpkm_threshold: 0.5
-
-# Run parameters
-run_taxonomy: True
-  # Contigs
-run_contigs_counts : True
-run_contigs_filtered : True
-run_contigs_RPKM : True
-run_contigs_RPKM_filter : True
-run_contigs_intersec : True
-  # Plots
-run_barplot: True
-run_heatmap: True
-run_pca: True
