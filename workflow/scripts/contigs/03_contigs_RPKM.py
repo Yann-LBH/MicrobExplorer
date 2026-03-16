@@ -1,78 +1,75 @@
-import random
-import os
+import csv
 
-# Shutdown VScode warnings
+# --- SNAKEMAKE CONFIGURATION (VSCode alerts) ---
 try:
     snakemake
 except NameError:
     from types import SimpleNamespace
-    snakemake = SimpleNamespace(input=SimpleNamespace(), output=SimpleNamespace(), params=SimpleNamespace(), wildcards=SimpleNamespace())
-    
-# --- RÉCUPÉRATION DES VARIABLES SNAKEMAKE ---
-path_in = snakemake.input.data
-path_out = snakemake.output.rpkm
-path_report = snakemake.output.step_checking
+    snakemake = SimpleNamespace(
+        input=SimpleNamespace(), 
+        output=SimpleNamespace(),
+        wildcards=SimpleNamespace()
+    )
 
-def calculate_rpkm_for_file(path_in, path_out):
+# --- VARIABLE RETRIEVAL ---
+path_in = snakemake.input.data
+current_file = [f for f in path_in if snakemake.wildcards.sample in f][0]
+path_out = snakemake.output.rpkm
+
+def calculate_rpkm_for_file(p_in, p_out):
     """
-    Calcule le RPKM pour chaque ligne d'un fichier.
-    Formule : (Reads_Mappés * 10^9) / (Taille_Contig * Total_Reads_Mappés_Echantillon)
+    Calculates RPKM for each contig in the file.
+    Formula: (Mapped_Reads * 10^9) / (Contig_Length * Total_Mapped_Reads_in_Sample)
     """
     try:
-        with open(path_in, 'r', encoding='utf-8') as f:        
-            content = f.readlines()
-            # 1. Calcul du facteur N (Somme totale des reads mappés dans cet échantillon)
-            total_mapped_sample = 0
-            valid_data = []
+        # Step 1: Calculate Total Mapped Reads (N) for the normalization factor
+        total_mapped_sample = 0
+        with open(p_in, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f, delimiter='\t')
+            for row in reader:
+                try:
+                    total_mapped_sample += int(row['Reads_Mapped'])
+                except (ValueError, KeyError):
+                    continue
         
-            for line in content:
-                columns = line.strip().split('\t')
-                if len(columns) >= 3:
-                    try:
-                        mapped = int(columns[2])
-                        total_mapped_sample += mapped
-                        valid_data.append(columns)
-                    except ValueError:
-                        continue # Ignore les headers
-        
+        # Avoid division by zero if the sample has no reads
         if total_mapped_sample == 0:
+            print("⚠️ Warning: Total mapped reads is zero. Cannot calculate RPKM.")
             return False
 
-        # 2. Calcul et écriture du RPKM
-        kept_lines = []
-        with open(path_out, 'w', encoding='utf-8') as f_out:
-            # En-tête
+        # Step 2: Calculate RPKM and write output
+        with open(p_in, 'r', encoding='utf-8') as f_in, \
+             open(p_out, 'w', encoding='utf-8', newline='') as f_out:
             
-            for columns in valid_data:
-                contig_id = columns[0]
-                length = int(columns[1])
-                reads = int(columns[2])
-                
-                # Application de la formule
-                rpkm = (reads * 10**9) / (length * total_mapped_sample)
-                
-                f_out.write(f"{contig_id}\t{length}\t{reads}\t{rpkm:.4f}\n")
-                
-        # Report a 10 lines sample
-        with open(path_report, 'w', encoding='utf-8') as f_rep:
-            f_rep.write(f"--- APERÇU ALÉATOIRE : {snakemake.wildcards.sample} ---\n")
-            f_rep.write("Contig_ID\tLength\tReads_Mapped\tRPKM\n")
-            if len(kept_lines) > 0:
-                sample_size = min(10, len(kept_lines))
-                random_sample = random.sample(kept_lines, sample_size)
-                f_rep.writelines(random_sample)
-            else:
-                f_rep.write("Aucune ligne n'a survécu au filtrage.")
+            reader = csv.DictReader(f_in, delimiter='\t')
+            # Prepare output header: original columns + RPKM
+            fieldnames = reader.fieldnames + ['RPKM']
+            writer = csv.DictWriter(f_out, fieldnames=fieldnames, delimiter='\t')
+            writer.writeheader()
+
+            for row in reader:
+                try:
+                    reads = int(row['Reads_Mapped'])
+                    length = int(row['Length'])
+                    
+                    # Apply RPKM Formula
+                    rpkm_val = (reads * 10**9) / (length * total_mapped_sample)
+                    row['RPKM'] = f"{rpkm_val:.4f}"
+                    writer.writerow(row)
+                except (ValueError, KeyError, ZeroDivisionError):
+                    # Skip lines with invalid numeric data or zero length
+                    continue
 
         return True
+
     except Exception as e:
-        print(f"❌ Erreur : {e}")
+        print(f"❌ Error: {e}")
         return False
 
-# --- EXÉCUTION ---
-print(f"📊 Analyse de {path_in} ")
-if calculate_rpkm_for_file(path_in, path_out):
-    print(f"✅ Calcul RPKM réussi -> {os.path.basename(path_out)}")
+# --- EXECUTION ---
+print(f"📊 Calculating RPKM for: {current_file}")
+if calculate_rpkm_for_file(current_file, path_out):
+    print(f"✅ RPKM calculation successful -> {path_out}")
 else:
-    # On lève une erreur pour que Snakemake sache que la règle a échoué
-    raise RuntimeError(f"Échec du calcul RPKM pour {os.path.basename(path_in)}")
+    # Raise error so Snakemake stops the pipeline
+    raise RuntimeError(f"RPKM calculation failed for {current_file}")

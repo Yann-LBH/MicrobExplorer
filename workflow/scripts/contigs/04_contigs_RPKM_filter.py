@@ -1,94 +1,92 @@
-import random
-import os
+import csv
 
-# Shutdown VScode warnings
+# --- SNAKEMAKE CONFIGURATION (VSCode alerts) ---
 try:
     snakemake
 except NameError:
     from types import SimpleNamespace
-    snakemake = SimpleNamespace(input=SimpleNamespace(), output=SimpleNamespace(), params=SimpleNamespace(), wildcards=SimpleNamespace())
+    snakemake = SimpleNamespace(
+        input=SimpleNamespace(data=["s1_rpkm.tsv", "s2_rpkm.tsv"]), 
+        output=SimpleNamespace(rpkm="filtered_rpkm.tsv"), 
+        params=SimpleNamespace(rpkm_threshold=0.5), 
+        wildcards=SimpleNamespace(sample="s1")
+    )
 
-# --- RÉCUPÉRATION DES VARIABLES SNAKEMAKE ---
-path_in = snakemake.input.data
-current_file = [f for f in path_in if snakemake.wildcards.sample in f][0]
+# --- VARIABLE RETRIEVAL ---
+path_in_list = snakemake.input.data
+# Identify the file corresponding to the current sample wildcard
+current_file = [f for f in path_in_list if snakemake.wildcards.sample in f][0]
 path_out = snakemake.output.rpkm
-path_report = snakemake.output.step_checking
-rpkm_threshold = snakemake.params.rpkm_threshold
+threshold = float(snakemake.params.rpkm_threshold)
 
-
-def get_total_RPKM(path_in):
-    """ Scanne tous les fichiers pour verifier le RPKM par contig. """
-    min_rpkm_counts = {}
-    first_file = True
+def get_min_rpkm_across_samples(files):
+    """
+    Scans all files to find the minimum RPKM value for each contig across the dataset.
+    If a contig is missing in one sample, its minimum RPKM is effectively 0.0.
+    """
+    min_rpkm_map = {}
+    is_first_file = True
     
-    for path in path_in:
-        current_file_contigs = {}
-        with open(path, 'r', encoding='utf-8') as f:              
-            for line in f:
-                colums = line.strip().split('\t')
-                if len(colums) >= 4:
-                    try:
-                        contig_id = colums[0]
-                        rpkm = float(colums[3]) # On ne prend que les mappés
-                        current_file_contigs[contig_id] = rpkm               
-                    except ValueError:
-                        continue
+    for path in files:
+        current_sample_data = {}
+        with open(path, 'r', encoding='utf-8') as f:
+            # Using DictReader to access columns by their header names
+            reader = csv.DictReader(f, delimiter='\t')
+            for row in reader:
+                try:
+                    contig_id = row['Contig_ID']
+                    rpkm_val = float(row['RPKM'])
+                    current_sample_data[contig_id] = rpkm_val
+                except (ValueError, KeyError):
+                    continue
 
-        if first_file:
-            min_rpkm_counts = current_file_contigs
-            first_file = False
+        if is_first_file:
+            min_rpkm_map = current_sample_data
+            is_first_file = False
         else:
-                # On met à jour le dictionnaire minimal
-                # 1. On vérifie les contigs communs
-                for cid in list(min_rpkm_counts.keys()):
-                    if cid in current_file_contigs:
-                        min_rpkm_counts[cid] = min(min_rpkm_counts[cid], current_file_contigs[cid])
-                    else:
-                        # Absent de ce fichier = le minimum tombe à 0
-                        min_rpkm_counts[cid] = 0.0
+            # Update global map: only keep the intersection of IDs with the minimum value
+            for cid in list(min_rpkm_map.keys()):
+                if cid in current_sample_data:
+                    min_rpkm_map[cid] = min(min_rpkm_map[cid], current_sample_data[cid])
+                else:
+                    # Contig missing in this sample results in a 0.0 minimum
+                    min_rpkm_map[cid] = 0.0
+                    
+    return min_rpkm_map
 
-    return min_rpkm_counts
-
-def filter_rpkm_contigs(path_in, path_out, min_rpkm_dict, rpkm_threshold):
-    """ Écrit le fichier en vérifiant le RPKM dans le dictionnaire global. """
-    kept_lines = []
+def filter_by_min_rpkm(input_path, output_path, min_map, threshold_val):
+    """
+    Writes the output file keeping only contigs that meet the global minimum RPKM.
+    """
     try:
-        with open(path_in, 'r', encoding='utf-8') as f_in, \
-             open(path_out, 'w', encoding='utf-8') as f_out:
+        with open(input_path, 'r', encoding='utf-8') as f_in, \
+             open(output_path, 'w', encoding='utf-8', newline='') as f_out:
 
-            for line in f_in:
-                colums = line.strip().split('\t')
-                if len(colums) >= 1:
-                    contig_id = colums[0]
+            reader = csv.DictReader(f_in, delimiter='\t')
+            writer = csv.DictWriter(f_out, fieldnames=reader.fieldnames, delimiter='\t')
+            
+            writer.writeheader()
 
-                    if min_rpkm_dict.get(contig_id, 0.0) >= rpkm_threshold:
-                        f_out.write(line)
-                        kept_lines.append(line)
-
-        # Report a 10 lines sample
-        with open(path_report, 'w', encoding='utf-8') as f_rep:
-            f_rep.write(f"--- APERÇU ALÉATOIRE : {snakemake.wildcards.sample} ---\n")
-            f_rep.write("Contig_ID\tLength\tReads_Mapped\tRPKM\n")
-            if len(kept_lines) > 0:
-                sample_size = min(10, len(kept_lines))
-                random_sample = random.sample(kept_lines, sample_size)
-                f_rep.writelines(random_sample)
-            else:
-                f_rep.write("Aucune ligne n'a survécu au filtrage.")
-
+            for row in reader:
+                contig_id = row.get('Contig_ID')
+                # Only write row if the global minimum for this ID meets the threshold
+                if contig_id and min_map.get(contig_id, 0.0) >= threshold_val:
+                    writer.writerow(row)
               
         return True
     except Exception as e:
-        print(f"❌ Erreur : {e}")
+        print(f"❌ Error during filtering: {e}")
         return False
 
+# --- EXECUTION ---
+# 1. Aggregate minimum values across all samples
+print(f"📊 Calculating global minimum RPKM across {len(path_in_list)} files...")
+global_min_dict = get_min_rpkm_across_samples(path_in_list)
 
-# --- EXÉCUTION ---
-print(f"📊 RPKM filtering {len(path_in)} fichiers...")
-
-print(f"📊 Analyse de {path_in} ")
-if filter_rpkm_contigs(path_in, path_out, min_threshold=0.5):
-    print(f"✅ Filtrage RPKM réussi -> {os.path.basename(path_out)}")
+# 2. Filter the current file based on the aggregated data
+print(f"📊 Filtering {current_file} (Threshold: {threshold})...")
+if filter_by_min_rpkm(current_file, path_out, global_min_dict, threshold):
+    print(f"✅ RPKM filtering successful -> {path_out}")
 else:
-    # On lève une erreur pour que Snakemake sache que la règle a échoué
-    raise RuntimeError(f"Échec du filtrage RPKM pour {os.path.basename(path_in)}")
+    # Fail the Snakemake job if processing encountered an error
+    raise RuntimeError(f"RPKM filtering failed for {current_file}")

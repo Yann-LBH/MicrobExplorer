@@ -64,7 +64,6 @@ rule contigs_processing:
     input: lambda w: CONTIGS_STEPS[w.step][1].format(sample=w.sample)
     output: 
         result = "results/counts/contigs/{step}/{sample}_{name}.tsv",
-        check  = "report/visual_check/{sample}_{name}.tsv"
     params: threshold = config["contigs"]["length_threshold"]
     conda: "envs/python_env.yaml"
     script: lambda w: f"../scripts/contigs/{CONTIGS_STEPS[w.step][0]}"
@@ -73,7 +72,6 @@ rule reads_processing:
     input: lambda w: RREADS_STEPS[w.step][1].format(sample=w.sample)
     output: 
         counts = "results/counts/contigs/{step}/{sample}_{name}.tsv",
-        check  = "report/visual_check/{sample}_{name}.tsv"
     params: threshold = config["contigs"]["length_threshold"]
     conda: "envs/python_env.yaml"
     script: lambda w: f"../scripts/contigs/{RREADS_STEPS[w.step][0]}"

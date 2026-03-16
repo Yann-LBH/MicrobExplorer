@@ -1,89 +1,102 @@
-import random
-import os
+import csv
 
-# Shutdown VScode warnings
+# --- SNAKEMAKE CONFIGURATION (VSCode alerts) ---
 try:
     snakemake
 except NameError:
     from types import SimpleNamespace
-    snakemake = SimpleNamespace(input=SimpleNamespace(), output=SimpleNamespace(), params=SimpleNamespace(), wildcards=SimpleNamespace())
+    snakemake = SimpleNamespace(
+        input=SimpleNamespace(data=["sample_rpkm.tsv"], taxonomy="taxonomy.tsv"), 
+        output=SimpleNamespace(taxaname="annotated_output.tsv"),
+        wildcards=SimpleNamespace(sample="sample1")
+    )
 
-# --- RÉCUPÉRATION DES VARIABLES SNAKEMAKE ---
+# --- VARIABLE RETRIEVAL ---
 path_in = snakemake.input.data
-path_out = snakemake.output.taxaname
+current_file = [f for f in path_in if snakemake.wildcards.sample in f][0]
 path_taxonomy = snakemake.input.taxonomy
-path_report = snakemake.output.step_checking
+path_out = snakemake.output.taxaname
 
-def load_taxonomy(path_taxonomy):
-    """ Charge le TSV de taxonomie {ID: Lineage} """
+def load_taxonomy(tax_path):
+    """
+    Loads taxonomy TSV into a dictionary {Contig_ID: Lineage}.
+    Expected format: [0] Class | [1] ID | [2] TaxID | [3] Lineage
+    """
     tax_dict = {}
-    if not os.path.exists(path_taxonomy):
-        print(f"⚠️ Warning: Fichier taxonomie introuvable.")
-        return tax_dict
-    
-    with open(path_taxonomy, 'r', encoding='utf-8') as f:
-        for line in f:
-            cols = line.strip().split('\t')
-            #Format : [0] 'C' | [1] 'ID' | [2] 'TaxID' | [3] 'Lineage'
-            if len(cols) >= 4:
-                contig_id = cols[1].strip()
-                lineage = cols[3].strip()
-                # On nettoie le dernier ';' s'il existe
-                if lineage.endswith(';'):
-                    lineage = lineage[:-1]
-                tax_dict[contig_id] = lineage
+    try:
+        with open(tax_path, 'r', encoding='utf-8') as f:
+            reader = csv.reader(f, delimiter='\t')
+            for cols in reader:
+                if len(cols) >= 4:
+                    contig_id = cols[1].strip()
+                    lineage = cols[3].strip()
+                    # Clean trailing semicolon if present
+                    if lineage.endswith(';'):
+                        lineage = lineage[:-1]
+                    tax_dict[contig_id] = lineage
+    except FileNotFoundError:
+        print(f"⚠️ Warning: Taxonomy file not found at {tax_path}")
     return tax_dict
 
-def run_annotation(path_in, path_out, path_taxonomy, tax_dict):
-    # 1. Lecture et Annotation
+def run_annotation(input_path, output_path, tax_dict):
+    """
+    Annotates RPKM data with taxonomy and sorts results by RPKM descending.
+    """
     data_to_sort = []
-    tax_dict = load_taxonomy(path_taxonomy)
-    
-    try:
-        with open(path_in, 'r', encoding='utf-8') as f_in:
+    header = None
 
-            for line in f_in:
-                cols = line.strip().split('\t')
-                if len(cols) < 4: continue
-                    
+    try:
+        with open(input_path, 'r', encoding='utf-8') as f_in:
+            reader = csv.reader(f_in, delimiter='\t')
+            
+            # Capture header
+            try:
+                header = next(reader)
+                header.append("Taxonomy")
+            except StopIteration:
+                return False
+
+            for cols in reader:
+                if len(cols) < 4:
+                    continue
+                
                 contig_id = cols[0].strip()
                 lineage = tax_dict.get(contig_id, "Unclassified")
-                    
+                
                 try:
+                    # Column index 3 is RPKM
                     rpkm_val = float(cols[3])
-                    # On crée la nouvelle ligne enrichie
-                    new_line = f"{line.strip()}\t{lineage}\n"
-                    data_to_sort.append((rpkm_val, new_line))
-                except ValueError: 
+                    # Add lineage to the row data
+                    cols.append(lineage)
+                    data_to_sort.append((rpkm_val, cols))
+                except ValueError:
                     continue
 
-        # 3. Tri par RPKM (Décroissant)
+        # Sort data by RPKM (index 0 of the tuple) in descending order
         data_to_sort.sort(key=lambda x: x[0], reverse=True)
-        final_lines = [item[1] for item in data_to_sort]
 
-        # 3. Écriture du fichier final annoté
-        with open(path_out, 'w', encoding='utf-8') as f_out:
-            f_out.writelines(final_lines)
-    
-           # Report a 10 lines sample
-        with open(path_report, 'w', encoding='utf-8') as f_rep:
-            f_rep.write(f"--- APERÇU ALÉATOIRE : {snakemake.wildcards.sample} ---\n")
-            f_rep.write("Contig_ID\tLength\tReads\tRPKM\tTaxonomy\n")
-            if len(final_lines) > 0:
-                sample_size = min(10, len(final_lines))
-                random_sample = random.sample(final_lines, sample_size)
-                f_rep.writelines(random_sample)
-            else:
-                f_rep.write("Aucune ligne n'a survécu au filtrage.")
+        # Write annotated and sorted file
+        with open(output_path, 'w', encoding='utf-8', newline='') as f_out:
+            writer = csv.writer(f_out, delimiter='\t')
+            if header:
+                writer.writerow(header)
+            
+            for item in data_to_sort:
+                writer.writerow(item[1])
+
+        return True
 
     except Exception as e:
-        print(f"❌ Erreur : {e}")
-        return None
+        print(f"❌ Error during annotation: {e}")
+        return False
 
-# --- EXÉCUTION ---
-print(f"📊 Analyse de {path_in} ")
-if run_annotation(path_in[0], path_in[1], path_out):
-    print(f"✅ Annotation réussie -> {os.path.basename(path_out)}")
+# --- EXECUTION ---
+print(f"📊 Loading taxonomy reference...")
+taxonomy_map = load_taxonomy(path_taxonomy)
+
+print(f"📊 Annotating {current_file}...")
+if run_annotation(current_file, path_out, taxonomy_map):
+    print(f"✅ Annotation successful -> {path_out}")
 else:
-    # On lève une erreur pour que Snakemake sache que la règle a échoué
-    raise RuntimeError(f"Échec de l'annotation pour {os.path.basename(path_in)}")
+    # Raise error to stop the Snakemake pipeline on failure
+    raise RuntimeError(f"Annotation failed for {current_file}")
