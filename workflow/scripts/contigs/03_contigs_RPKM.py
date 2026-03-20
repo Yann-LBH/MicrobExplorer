@@ -1,21 +1,17 @@
 import csv
+from types import SimpleNamespace
 
-# --- SNAKEMAKE CONFIGURATION (VSCode alerts) ---
+# 1. --- COMPATIBILITY SETTINGS ---
 try:
     snakemake
 except NameError:
-    from types import SimpleNamespace
     snakemake = SimpleNamespace(
         input=SimpleNamespace(), 
         output=SimpleNamespace(),
         wildcards=SimpleNamespace()
     )
 
-# --- VARIABLE RETRIEVAL ---
-path_in = snakemake.input.data
-current_file = [f for f in path_in if snakemake.wildcards.sample in f][0]
-path_out = snakemake.output.rpkm
-
+# 2. --- JOB DESCRIPTION ---
 def calculate_rpkm_for_file(p_in, p_out):
     """
     Calculates RPKM for each contig in the file.
@@ -66,7 +62,12 @@ def calculate_rpkm_for_file(p_in, p_out):
         print(f"❌ Error: {e}")
         return False
 
-# --- EXECUTION ---
+# --- VARIABLE RETRIEVAL & EXECUTION ---
+
+path_in = snakemake.input.data
+current_file = [f for f in path_in if snakemake.wildcards.sample in f][0]
+path_out = snakemake.output.rpkm
+
 print(f"📊 Calculating RPKM for: {current_file}")
 if calculate_rpkm_for_file(current_file, path_out):
     print(f"✅ RPKM calculation successful -> {path_out}")

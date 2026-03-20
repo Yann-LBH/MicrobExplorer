@@ -5,6 +5,7 @@ path :
 extensions :
   reads: ".kaijuNR"
   contigs: ".tsv"
+  bakta: ".gff3"
 ################
 # Run parameters
 ################
@@ -35,6 +36,14 @@ contigs:
 ####################
 # Graphic parameters
 ####################
+taxonomic_levels:
+  - "Phylum"
+  - "Class"
+  - "Order"
+  - "Family"
+  - "Genus"
+  - "Species"
+
 plots:
 # Global
   shared:
@@ -53,7 +62,7 @@ plots:
       size: 10
   heatmap:
     cluster_rows: True
-    palette: "Viridis"
+    palette: "Turbo"
   barplot:
     top_n_taxa: 20
 

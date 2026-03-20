@@ -1,10 +1,10 @@
 import csv
+from types import SimpleNamespace
 
-# --- SNAKEMAKE CONFIGURATION (VSCode alerts) ---
+# 1. --- COMPATIBILITY SETTINGS ---
 try:
     snakemake
 except NameError:
-    from types import SimpleNamespace
     snakemake = SimpleNamespace(
         input=SimpleNamespace(), 
         output=SimpleNamespace(), 
@@ -12,51 +12,39 @@ except NameError:
         wildcards=SimpleNamespace()
     )
 
-# --- VARIABLE RETRIEVAL ---
-path_in = snakemake.input.raw_data
-current_file = [f for f in path_in if snakemake.wildcards.sample in f][0]
-path_out = snakemake.output.counts
-min_size = int(snakemake.params.length_threshold)
-sample_id = snakemake.wildcards.sample
-
-def filter_tsv_contigs(path_in, path_out, threshold):
+# 2. --- JOB DESCRIPTION ---
+def filter_tsv_contigs(input_path, output_path, threshold):
     """
-    Filters a TSV file of contigs based on a minimum length threshold.
+    Fonction pure : elle ne dépend d'aucune variable globale.
+    Tout ce dont elle a besoin lui est passé en argument.
     """
-    kept_rows = []
-    
     try:
-        with open(path_in, 'r', encoding='utf-8') as f_in:
-            # TSV reading in dictionary mode
+        with open(input_path, 'r', encoding='utf-8') as f_in:
             reader = csv.DictReader(f_in, delimiter='\t')
             fieldnames = reader.fieldnames
-            
-            for row in reader:
-                try:
-                    # Checking 'Length' column
-                    if int(row['Length']) >= threshold:
-                        kept_rows.append(row)
-                except (ValueError, KeyError):
-                    # Skip the row if 'Length' is missing or not an integer
-                    continue
+            kept_rows = [row for row in reader if int(row.get('contig_length', 0)) >= threshold]
 
-        # --- WRITING THE FILTERED FILE ---
-        with open(path_out, 'w', encoding='utf-8', newline='') as f_out:
+        with open(output_path, 'w', encoding='utf-8', newline='') as f_out:
             writer = csv.DictWriter(f_out, fieldnames=fieldnames, delimiter='\t')
             writer.writeheader()
             writer.writerows(kept_rows)
-
         return True
-
+    
     except Exception as e:
-        print(f"❌ Error during the treatment of {path_in} : {e}")
+        print(f"❌ Erreur : {e}")
         return False
 
-# --- EXECUTION ---
-print(f"📊 Analyze of {path_in} (Threshold: {min_size})...")
+# 3. --- VARIABLE RETRIEVAL & EXECUTION ---
+if __name__ == "__main__":
 
-if filter_tsv_contigs(current_file, path_in, path_out, min_size):
-    print(f"✅ Filtered successfully -> {path_out}")
-else:
-    # ERROR HANDLING 
-    raise RuntimeError(f"❌ Failed to count contigs for {current_file}")
+    path_in = snakemake.input.raw_data
+    current_file = [f for f in path_in if snakemake.wildcards.sample in f][0]
+    path_out = snakemake.output.counts
+    min_size = int(snakemake.params.length_threshold)
+
+    print(f"📊 Analyse de {current_file} (Seuil: {min_size})...")
+
+    if filter_tsv_contigs(current_file, path_out, min_size):
+        print(f"✅ Filtrage réussi -> {path_out}")
+    else:
+        raise RuntimeError(f"❌ Échec du traitement pour {current_file}")

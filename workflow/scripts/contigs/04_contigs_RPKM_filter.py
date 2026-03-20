@@ -1,24 +1,18 @@
 import csv
+from types import SimpleNamespace
 
-# --- SNAKEMAKE CONFIGURATION (VSCode alerts) ---
+# 1. --- COMPATIBILITY SETTINGS ---
 try:
     snakemake
 except NameError:
-    from types import SimpleNamespace
     snakemake = SimpleNamespace(
-        input=SimpleNamespace(data=["s1_rpkm.tsv", "s2_rpkm.tsv"]), 
-        output=SimpleNamespace(rpkm="filtered_rpkm.tsv"), 
-        params=SimpleNamespace(rpkm_threshold=0.5), 
-        wildcards=SimpleNamespace(sample="s1")
+        input=SimpleNamespace(), 
+        output=SimpleNamespace(), 
+        params=SimpleNamespace(), 
+        wildcards=SimpleNamespace()
     )
 
-# --- VARIABLE RETRIEVAL ---
-path_in_list = snakemake.input.data
-# Identify the file corresponding to the current sample wildcard
-current_file = [f for f in path_in_list if snakemake.wildcards.sample in f][0]
-path_out = snakemake.output.rpkm
-threshold = float(snakemake.params.rpkm_threshold)
-
+# 2. --- JOB DESCRIPTION ---
 def get_min_rpkm_across_samples(files):
     """
     Scans all files to find the minimum RPKM value for each contig across the dataset.
@@ -78,7 +72,13 @@ def filter_by_min_rpkm(input_path, output_path, min_map, threshold_val):
         print(f"❌ Error during filtering: {e}")
         return False
 
-# --- EXECUTION ---
+# --- VARIABLE RETRIEVAL & EXECUTION ---
+
+path_in_list = snakemake.input.data
+current_file = [f for f in path_in_list if snakemake.wildcards.sample in f][0]
+path_out = snakemake.output.rpkm
+threshold = float(snakemake.params.rpkm_threshold)
+
 # 1. Aggregate minimum values across all samples
 print(f"📊 Calculating global minimum RPKM across {len(path_in_list)} files...")
 global_min_dict = get_min_rpkm_across_samples(path_in_list)
@@ -88,5 +88,4 @@ print(f"📊 Filtering {current_file} (Threshold: {threshold})...")
 if filter_by_min_rpkm(current_file, path_out, global_min_dict, threshold):
     print(f"✅ RPKM filtering successful -> {path_out}")
 else:
-    # Fail the Snakemake job if processing encountered an error
     raise RuntimeError(f"RPKM filtering failed for {current_file}")

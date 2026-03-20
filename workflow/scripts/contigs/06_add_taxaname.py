@@ -1,22 +1,17 @@
 import csv
+from types import SimpleNamespace
 
-# --- SNAKEMAKE CONFIGURATION (VSCode alerts) ---
+# 1. --- COMPATIBILITY SETTINGS ---
 try:
     snakemake
 except NameError:
-    from types import SimpleNamespace
     snakemake = SimpleNamespace(
-        input=SimpleNamespace(data=["sample_rpkm.tsv"], taxonomy="taxonomy.tsv"), 
-        output=SimpleNamespace(taxaname="annotated_output.tsv"),
-        wildcards=SimpleNamespace(sample="sample1")
+        input=SimpleNamespace(), 
+        output=SimpleNamespace(),
+        wildcards=SimpleNamespace()
     )
 
-# --- VARIABLE RETRIEVAL ---
-path_in = snakemake.input.data
-current_file = [f for f in path_in if snakemake.wildcards.sample in f][0]
-path_taxonomy = snakemake.input.taxonomy
-path_out = snakemake.output.taxaname
-
+# 2. --- JOB DESCRIPTION ---
 def load_taxonomy(tax_path):
     """
     Loads taxonomy TSV into a dictionary {Contig_ID: Lineage}.
@@ -69,6 +64,7 @@ def run_annotation(input_path, output_path, tax_dict):
                     # Add lineage to the row data
                     cols.append(lineage)
                     data_to_sort.append((rpkm_val, cols))
+                    
                 except ValueError:
                     continue
 
@@ -90,7 +86,13 @@ def run_annotation(input_path, output_path, tax_dict):
         print(f"❌ Error during annotation: {e}")
         return False
 
-# --- EXECUTION ---
+# --- VARIABLE RETRIEVAL & EXECUTION ---
+
+path_in = snakemake.input.data
+current_file = [f for f in path_in if snakemake.wildcards.sample in f][0]
+path_taxonomy = snakemake.input.taxonomy
+path_out = snakemake.output.taxaname
+
 print(f"📊 Loading taxonomy reference...")
 taxonomy_map = load_taxonomy(path_taxonomy)
 
@@ -98,5 +100,4 @@ print(f"📊 Annotating {current_file}...")
 if run_annotation(current_file, path_out, taxonomy_map):
     print(f"✅ Annotation successful -> {path_out}")
 else:
-    # Raise error to stop the Snakemake pipeline on failure
     raise RuntimeError(f"Annotation failed for {current_file}")

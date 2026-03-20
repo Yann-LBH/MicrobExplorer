@@ -16,28 +16,34 @@ if config.get("run_taxonomy"):
 # Dictionnaire des étapes de processing
 CONTIGS_STEPS = {
     "1.Raw_Counting":   ["01_contigs_counting_raw.py",  "data/raw/{sample}.tsv"],
-    "2.Filtered":       ["02_contigs_filter.py",        "results/counts/contigs/1.Raw_Counting/{sample}_counts.tsv"],
-    "3.rpkm":           ["03_contigs_rpkm.py",          "results/counts/contigs/2.Filtered/{sample}_filtered.tsv"],
-    "4.rpkm_Filtered":  ["04_contigs_rpkm_filter.py",   "results/counts/contigs/3.rpkm/{sample}_rpkm.tsv"],
-    "5.Intersection":   ["05_contigs_intersec.py",      "results/counts/contigs/4.rpkm_Filtered/{sample}_rpkm_filtered.tsv"],
-    "6.Final_Results":  ["06_contigs_add_taxaname.py",  "results/counts/contigs/5.Intersection/{sample}_intersec.tsv"]
+    "2.Filtered":       ["02_contigs_filter.py",        "results/treatment/contigs/1.Raw_Counting/{sample}_counts.tsv"],
+    "3.rpkm":           ["03_contigs_rpkm.py",          "results/treatment/contigs/2.Filtered/{sample}_filtered.tsv"],
+    "4.rpkm_Filtered":  ["04_contigs_rpkm_filter.py",   "results/treatment/contigs/3.rpkm/{sample}_rpkm.tsv"],
+    "5.Intersection":   ["05_contigs_intersec.py",      "results/treatment/contigs/4.rpkm_Filtered/{sample}_rpkm_filtered.tsv"],
+    "6.Final_Results":  ["06_contigs_add_taxaname.py",  "results/treatment/contigs/5.Intersection/{sample}_intersec.tsv"]
 }
 
 READS_STEPS = {
     "1.Raw_Counting":   ["01_reads_counting_raw.py",  "data/raw/{sample}.tsv"],
-    "2.Filtered":       ["02_reads_filter.py",        "results/counts/reads/1.Raw_Counting/{sample}_counts.tsv"],
-    "3.Final_Results":  ["03_reads_add_taxaname.py",  "results/counts/reads/2.Filtered/{sample}_filtered.tsv"]
+    "2.Filtered":       ["02_reads_filter.py",        "results/treatment/reads/1.Raw_Counting/{sample}_counts.tsv"],
+    "3.Final_Results":  ["03_reads_add_taxaname.py",  "results/treatment/reads/2.Filtered/{sample}_filtered.tsv"]
 }
 
 # Plots
 PLOT_CONFIG = {
     "barplot": ["07_barplot.R", "data/processed/barplots_data.rds"],
+    "stacked_barplot": ["07_barplot.R", "data/processed/stacked_barplot_data.rds"],
     "heatmap": ["08_heatmap.R", "data/processed/all_samples_consolidated.rds"],
     "pca":     ["09_ACP.R",     "data/processed/all_samples_consolidated.rds"],
-    "volcano": ["10_volcano.R", "data/processed/deseq2_results.rds"]
+    "volcano": ["10_volcano.R", "data/processed/deseq2_results.rds"],
 }
 
-PLOT_TYPES = ["barplot", "heatmap", "pca", "volcano"]
+PLOT_CONFIG = {
+    "permanova": ["07_barplot.R", "data/processed/barplots_data.rds"],
+    "deseq2": ["07_barplot.R", "data/processed/barplots_data.rds"]
+}
+
+PLOT_TYPES = ["barplot", "heatmap", "pca", "volcano", "permanova"]
 for plot_type in PLOT_TYPES:
     if config.get(f"run_{plot_type}"):
         final_targets.append(f"results/plots/{plot_type}.png")

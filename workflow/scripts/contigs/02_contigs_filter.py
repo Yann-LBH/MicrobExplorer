@@ -1,10 +1,10 @@
 import csv
+from types import SimpleNamespace
 
-# --- SNAKEMAKE CONFIGURATION (VSCode alerts) ---
+# 1. --- COMPATIBILITY SETTINGS ---
 try:
     snakemake
 except NameError:
-    from types import SimpleNamespace
     snakemake = SimpleNamespace(
         input=SimpleNamespace(), 
         output=SimpleNamespace(), 
@@ -12,12 +12,7 @@ except NameError:
         wildcards=SimpleNamespace()
     )
 
-# --- VARIABLE RETRIEVAL ---
-path_in = snakemake.input.data
-current_file = [f for f in path_in if snakemake.wildcards.sample in f][0]
-path_out = snakemake.output.filtered
-min_total = snakemake.params.reads_threshold
-
+# 2. --- JOB DESCRIPTION ---
 def get_total_abundance(files):
     """
     Scan all files to sum reads per contig ID.
@@ -60,10 +55,17 @@ def filter_by_global_abundance(current_path, out_path, counts_dict, threshold):
         print(f"❌ Error: {e}")
         return False
 
-# --- EXECUTION ---
-abundance_dict = get_total_abundance(path_in)
+# --- VARIABLE RETRIEVAL & EXECUTION ---
+if __name__ == "__main__":
 
-if filter_by_global_abundance(current_file, path_out, abundance_dict, min_total):
-    print(f"✅ Successfully filtered -> {path_out}")
-else:
-    raise RuntimeError(f"Filtering failed for {current_file}")
+    path_in = snakemake.input.data
+    current_file = [f for f in path_in if snakemake.wildcards.sample in f][0]
+    path_out = snakemake.output.filtered
+    min_total = snakemake.params.reads_threshold
+
+    abundance_dict = get_total_abundance(path_in)
+
+    if filter_by_global_abundance(current_file, path_out, abundance_dict, min_total):
+        print(f"✅ Successfully filtered -> {path_out}")
+    else:
+        raise RuntimeError(f"Filtering failed for {current_file}")
