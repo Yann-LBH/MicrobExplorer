@@ -1,0 +1,433 @@
+---
+title: "Barplots_from_DEseq2"
+author: "Yann Le Bihan"
+date: "2026-03-05"
+output: html_document
+---
+
+#Library
+```{r setup, include=FALSE}
+library(phyloseq)
+library(DESeq2)
+library(ggplot2)
+library(dplyr) # pipe
+library(viridis)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Settings
+```{r cars}
+# --- Global settings ---
+data_path <- "B.RDS_obj/deseq2_object2.rds"
+ps_path <- "B.RDS_obj/ps_object.rds"
+saving_folder <- "Graphique/Barplot/Dif_ab"
+```
+
+# Folder creation
+```{r}
+# --- Folder creation --
+if (!dir.exists(saving_folder)) {
+  dir.create(saving_folder, recursive = TRUE, showWarnings = FALSE)
+  message(paste("Dossier créé :", saving_folder))
+} else {
+  message(paste("Le dossier existe déjà :", saving_folder))
+}
+```
+
+#Import rds
+```{r}
+results_list <- readRDS(data_path)
+ps <- readRDS(ps_path)
+```
+
+# Ajout table taxonomique pour regroupement
+```{r}
+tax <- as.data.frame(tax_table(ps))
+
+# Fonction pour trouver le meilleur niveau disponible
+# Si le Genre est vide, on prend la Famille, sinon l'Ordre, etc.
+get_best_tax <- function(row) {
+  # On remplace les NA par du texte pour pouvoir les tester
+  row[is.na(row)] <- ""
+  if (row["Genus"] != "") return(paste0("G:", row["Genus"]))
+  if (row["Family"] != "") return(paste0("F:", row["Family"]))
+  if (row["Order"] != "") return(paste0("O:", row["Order"]))
+  if (row["Phylum"] != "") return(paste0("P:", row["Phylum"]))
+  return("Unclassified")
+}
+
+# Appliquer la fonction
+tax$Best_Taxa <- apply(tax, 1, get_best_tax)
+tax_table(ps) <- tax_table(as.matrix(tax))
+```
+
+
+# Plot by digesteur (padj <= 0.05)
+```{r pressure, echo=FALSE}
+#RDS_obj 3
+
+# 1. Préparation globale (Abondance relative)
+ps_rel <- transform_sample_counts(ps, function(x) x / sum(x))
+df_ps_base <- psmelt(ps_rel)
+
+# 2. Fonction de génération de plot
+plot_mosaic_digesteur <- function(df_base, ids, type_label, comp_name, d_ref, d_test) {
+  
+  # --- Étape 1 : Identifier le Top 10 des taxons DA les plus abondants ---
+  df_da_only <- df_base %>%
+    filter(OTU %in% ids) %>%
+    group_by(Best_Taxa) %>%
+    summarise(Total_Abundance = sum(Abundance), .groups = "drop") %>%
+    arrange(desc(Total_Abundance))
+  
+  top_10_taxa <- head(df_da_only$Best_Taxa, 10)
+  
+  # --- Étape 2 : Filtrer les échantillons de la comparaison et catégoriser ---
+  df_plot <- df_base %>%
+    filter(Digesteur %in% c(d_ref, d_test)) %>% # Dig en variable snakemake peut etre Date 
+    mutate(
+      Final_Category = case_when(
+        OTU %in% ids & Best_Taxa %in% top_10_taxa ~ Best_Taxa,  # Top 10 DA -> couleur
+        OTU %in% ids                               ~ "Autres Significatifs",  # DA hors Top10 -> gris
+        TRUE                                       ~ "Non-Significatif"       # Non DA -> noir
+      ),
+      Sort_Priority = case_when(
+        OTU %in% ids & Best_Taxa %in% top_10_taxa  ~ 2,
+        OTU %in% ids                               ~ 1,
+        TRUE                                       ~ 0
+      )
+    ) %>%
+    group_by(Sample, Digesteur, Final_Category, Sort_Priority) %>%
+    summarise(Abundance = sum(Abundance), .groups = "drop")
+  
+  # --- Étape 3 : Palette de couleurs ---
+  unique_cats   <- unique(df_plot$Final_Category)
+  taxa_in_plot  <- unique_cats[!unique_cats %in% c("Autres Significatifs", "Non-Significatif")]
+  
+  colors_turbo <- setNames(turbo(max(length(taxa_in_plot), 1)), taxa_in_plot)
+  all_colors   <- c(colors_turbo,
+                    "Autres Significatifs" = "grey60",
+                    "Non-Significatif"     = "grey10")
+  
+  # Ordre des facteurs : Non-Sig en bas, Autres DA au milieu, Top10 en haut
+  level_order <- c("Non-Significatif", "Autres Significatifs", taxa_in_plot)
+  df_plot <- df_plot %>%
+    mutate(Final_Category = factor(Final_Category, levels = level_order))
+  
+  # --- Étape 4 : Plot ---
+  p <- ggplot(df_plot,
+              aes(x = Sample, y = Abundance, fill = Final_Category)) +
+    geom_bar(stat = "identity", position = "stack", width = 0.9, color = NA) +
+    scale_fill_manual(
+      values = all_colors,
+      breaks = c(taxa_in_plot, "Autres Significatifs", "Non-Significatif"),  # ordre légende
+      name   = "Taxon"
+    ) +
+    facet_grid(. ~ Digesteur, scales = "free_x", space = "free_x") +
+    scale_y_continuous(labels = scales::percent_format()) +
+    theme_classic() +
+    theme(
+      axis.text.x      = element_text(angle = 90, vjust = 0.5, size = 7),
+      legend.position  = "right",
+      legend.text      = element_text(size = 7),
+      legend.key.size  = unit(0.3, "cm"),
+      legend.title     = element_text(size = 8, face = "bold"),
+      strip.background = element_rect(fill = "grey90")
+    ) +
+    labs(
+      title    = paste("Mosaïque", type_label, ":", comp_name, "— padj ≤ 0.05"),
+      subtitle = paste("Comparaison :", d_test, "(Test) vs", d_ref, "(Réf)"),
+      x = "Échantillons",
+      y = "Abondance Relative"
+    )
+  
+  #ggsave(
+    #file.path(saving_folder, paste0("MosaicPhylo_", type_label, "_", comp_name, ".png")),
+    #p, width = 10, height = 7, dpi = 300
+  #)
+  message("Sauvegardé : ", type_label, " — ", comp_name)
+}
+
+# 3. Boucle sur les comparaisons
+for (nom_comp in names(results_list)) {
+  res    <- results_list[[nom_comp]]
+  d_test <- res$Test_Group[1]
+  d_ref  <- res$Ref_Group[1]
+  
+  ids_over  <- res %>% filter(padj <= 0.05, log2FoldChange > 0) %>% pull(Contig_ID)
+  ids_under <- res %>% filter(padj <= 0.05, log2FoldChange < 0) %>% pull(Contig_ID)
+  
+  plot_mosaic_digesteur(df_ps_base, ids_over,  "Over",  nom_comp, d_ref, d_test)
+  plot_mosaic_digesteur(df_ps_base, ids_under, "Under", nom_comp, d_ref, d_test)
+}
+
+```
+
+# Plot by date (padj <= 0.05)
+```{r pressure, echo=FALSE}
+#RDS_obj 2
+
+# 1. Normalisation et préparation (Extérieur boucle)
+ps_rel <- transform_sample_counts(ps, function(x) x / sum(x))
+df_ps_base <- psmelt(ps_rel)
+
+# 2. Fonction interne pour générer et sauvegarder le plot
+generate_mosaic <- function(df_base, ids, type_label, comp_name, t_ref, t_act) {
+
+  # --- Étape 1 : Identifier le Top 10 des taxons DA les plus abondants ---
+  df_da_only <- df_base %>%
+    filter(OTU %in% ids) %>%
+    group_by(Best_Taxa) %>%
+    summarise(Total_Abundance = sum(Abundance), .groups = "drop") %>%
+    arrange(desc(Total_Abundance))
+
+  top_10_taxa <- head(df_da_only$Best_Taxa, 10)
+
+  # --- Étape 2 : Filtrer les échantillons de la comparaison et catégoriser ---
+  df_plot <- df_base %>%
+    filter(Date %in% c(t_ref, t_act)) %>%
+    mutate(
+      Final_Category = case_when(
+        OTU %in% ids & Best_Taxa %in% top_10_taxa ~ Best_Taxa,       # Top 10 DA -> couleur
+        OTU %in% ids                               ~ "Autres Significatifs",  # DA hors Top10 -> gris
+        TRUE                                       ~ "Non-Significatif"       # Non DA -> noir
+      ),
+      Sort_Priority = case_when(
+        OTU %in% ids & Best_Taxa %in% top_10_taxa  ~ 2,
+        OTU %in% ids                               ~ 1,
+        TRUE                                       ~ 0
+      )
+    ) %>%
+    group_by(Sample, Digesteur, Date, Final_Category, Sort_Priority) %>%
+    summarise(Abundance = sum(Abundance), .groups = "drop")
+
+  # --- Étape 3 : Palette de couleurs ---
+  unique_cats  <- unique(df_plot$Final_Category)
+  taxa_in_plot <- unique_cats[!unique_cats %in% c("Autres Significatifs", "Non-Significatif")]
+
+  colors_turbo <- setNames(turbo(max(length(taxa_in_plot), 1)), taxa_in_plot)
+  all_colors   <- c(colors_turbo,
+                    "Autres Significatifs" = "grey60",
+                    "Non-Significatif"     = "grey10")
+
+  # Ordre des facteurs : Non-Sig en bas, Autres DA au milieu, Top10 en haut
+  level_order  <- c("Non-Significatif", "Autres Significatifs", taxa_in_plot)
+  df_plot <- df_plot %>%
+    mutate(Final_Category = factor(Final_Category, levels = level_order))
+
+  # --- Étape 4 : Plot ---
+  p <- ggplot(df_plot,
+              aes(x = Sample, y = Abundance, fill = Final_Category)) +
+    geom_bar(stat = "identity", position = "stack", width = 0.9, color = NA) +
+    scale_fill_manual(
+      values = all_colors,
+      breaks = c(taxa_in_plot, "Autres Significatifs", "Non-Significatif"),
+      name   = "Taxon"
+    ) +
+    facet_grid(. ~ Date, scales = "free_x", space = "free_x") +
+    scale_y_continuous(labels = scales::percent_format()) +
+    theme_classic() +
+    theme(
+      axis.text.x      = element_text(angle = 90, vjust = 0.5, size = 7),
+      legend.position  = "right",
+      legend.text      = element_text(size = 7),
+      legend.key.size  = unit(0.3, "cm"),
+      legend.title     = element_text(size = 8, face = "bold"),
+      strip.background = element_rect(fill = "grey90")
+    ) +
+    guides(fill = guide_legend(ncol = 1)) +
+    labs(
+      title    = paste("Mosaic", type_label, ":", comp_name, "— padj ≤ 0.05"),
+      subtitle = paste("Comparaison :", t_act, "(Test) vs", t_ref, "(Réf)"),
+      x = "Échantillons",
+      y = "Abondance Relative"
+    )
+
+  ggsave(
+    file.path(saving_folder, paste0("MosaicPhyloD1_", type_label, "_", comp_name, ".png")),
+    p, width = 10, height = 7, dpi = 300
+  )
+  message("Sauvegardé : ", type_label, " — ", comp_name)
+}
+
+# 3. Boucle unique
+for (nom_comp in names(results_list)) {
+  res   <- results_list[[nom_comp]]
+  t_act <- res$Time_Point[1]
+  t_ref <- res$Reference_Point[1]
+
+  ids_over  <- res %>% filter(padj <= 0.05, log2FoldChange > 0) %>% pull(Contig_ID)
+  ids_under <- res %>% filter(padj <= 0.05, log2FoldChange < 0) %>% pull(Contig_ID)
+
+  generate_mosaic(df_ps_base, ids_over,  "Over",  nom_comp, t_ref, t_act)
+  generate_mosaic(df_ps_base, ids_under, "Under", nom_comp, t_ref, t_act)
+}
+```
+
+# Plot by date (padj <= 0.001, log2FoldChange >= 1.3)
+```{r}
+#RDS_obj 2
+
+# 1. Normalisation et préparation (Extérieur boucle)
+ps_rel <- transform_sample_counts(ps, function(x) x / sum(x))
+df_ps_base <- psmelt(ps_rel)
+
+# 2. Fonction interne pour générer et sauvegarder le plot
+generate_mosaic <- function(df_base, ids, type_label, comp_name, t_ref, t_act) {
+
+  # --- Étape 1 : Identifier le Top 10 des taxons DA les plus abondants ---
+  df_da_only <- df_base %>%
+    filter(OTU %in% ids) %>%
+    group_by(Best_Taxa) %>%
+    summarise(Total_Abundance = sum(Abundance), .groups = "drop") %>%
+    arrange(desc(Total_Abundance))
+
+  top_10_taxa <- head(df_da_only$Best_Taxa, 10)
+
+  # --- Étape 2 : Filtrer les échantillons de la comparaison et catégoriser ---
+  df_plot <- df_base %>%
+    filter(Date %in% c(t_ref, t_act)) %>%
+    mutate(
+      Final_Category = case_when(
+        OTU %in% ids & Best_Taxa %in% top_10_taxa ~ Best_Taxa,       # Top 10 DA -> couleur
+        OTU %in% ids                               ~ "Autres Significatifs",  # DA hors Top10 -> gris
+        TRUE                                       ~ "Non-Significatif"       # Non DA -> noir
+      ),
+      Sort_Priority = case_when(
+        OTU %in% ids & Best_Taxa %in% top_10_taxa  ~ 2,
+        OTU %in% ids                               ~ 1,
+        TRUE                                       ~ 0
+      )
+    ) %>%
+    group_by(Sample, Digesteur, Date, Final_Category, Sort_Priority) %>%
+    summarise(Abundance = sum(Abundance), .groups = "drop")
+
+  # --- Étape 3 : Palette de couleurs ---
+  unique_cats  <- unique(df_plot$Final_Category)
+  taxa_in_plot <- unique_cats[!unique_cats %in% c("Autres Significatifs", "Non-Significatif")]
+
+  colors_turbo <- setNames(turbo(max(length(taxa_in_plot), 1)), taxa_in_plot)
+  all_colors   <- c(colors_turbo,
+                    "Autres Significatifs" = "grey60",
+                    "Non-Significatif"     = "grey10")
+
+  # Ordre des facteurs : Non-Sig en bas, Autres DA au milieu, Top10 en haut
+  level_order  <- c("Non-Significatif", "Autres Significatifs", taxa_in_plot)
+  df_plot <- df_plot %>%
+    mutate(Final_Category = factor(Final_Category, levels = level_order))
+
+  # --- Étape 4 : Plot ---
+  p <- ggplot(df_plot,
+              aes(x = Sample, y = Abundance, fill = Final_Category)) +
+    geom_bar(stat = "identity", position = "stack", width = 0.9, color = NA) +
+    scale_fill_manual(
+      values = all_colors,
+      breaks = c(taxa_in_plot, "Autres Significatifs", "Non-Significatif"),
+      name   = "Taxon"
+    ) +
+    facet_grid(. ~ Date, scales = "free_x", space = "free_x") +
+    scale_y_continuous(labels = scales::percent_format()) +
+    theme_classic() +
+    theme(
+      axis.text.x      = element_text(angle = 90, vjust = 0.5, size = 7),
+      legend.position  = "right",
+      legend.text      = element_text(size = 7),
+      legend.key.size  = unit(0.3, "cm"),
+      legend.title     = element_text(size = 8, face = "bold"),
+      strip.background = element_rect(fill = "grey90")
+    ) +
+    guides(fill = guide_legend(ncol = 1)) +
+    labs(
+      title    = paste("Mosaic", type_label, ":", comp_name, "— padj ≤ 0.001"),
+      subtitle = paste("Comparaison :", t_act, "(Test) vs", t_ref, "(Réf)"),
+      x = "Échantillons",
+      y = "Abondance Relative"
+    )
+
+  ggsave(
+    file.path(saving_folder, paste0("MosaicPhyloD2_", type_label, "_", comp_name, ".png")),
+    p, width = 10, height = 7, dpi = 300
+  )
+  message("Sauvegardé : ", type_label, " — ", comp_name)
+}
+
+# 3. Boucle unique
+for (nom_comp in names(results_list)) {
+  res   <- results_list[[nom_comp]]
+  t_act <- res$Time_Point[1]
+  t_ref <- res$Reference_Point[1]
+
+  ids_over  <- res %>% filter(padj <= 0.001, log2FoldChange >= 1.3) %>% pull(Contig_ID)
+  ids_under <- res %>% filter(padj <= 0.001, log2FoldChange <= -1.3) %>% pull(Contig_ID)
+
+  generate_mosaic(df_ps_base, ids_over,  "Over",  nom_comp, t_ref, t_act)
+  generate_mosaic(df_ps_base, ids_under, "Under", nom_comp, t_ref, t_act)
+}
+```
+
+# Brouillon gemini | Plot by date (padj <= 0.001, log2FoldChange >= 1.3)
+```{r pressure, echo=FALSE}
+#RDS_obj 2
+
+# 1. Normalisation et préparation (Extérieur boucle)
+ps_rel <- transform_sample_counts(ps, function(x) x / sum(x))
+df_ps_base <- psmelt(ps_rel)
+
+# 2. Fonction interne pour générer et sauvegarder le plot
+generate_mosaic <- function(df_base, ids, type_label, comp_name, t_ref, t_act) {
+  #if(length(ids) == 0) return(message("Saut : Aucun ", type_label, " pour ", comp_name))
+  
+    # 1. Identifier les TAXONS qui contiennent au moins un contig significatif 
+  # Si regroupement phylo, commenter mutate au dessus
+  taxons_signifs <- df_base %>%
+    filter(OTU %in% ids) %>%
+    pull(Best_Taxa) %>%
+    unique()
+  
+  df_plot <- df_base %>%
+    filter(Date %in% c(t_ref, t_act)) %>%
+#    mutate(Color_ID = ifelse(OTU %in% ids, OTU, NA),
+#           Sort_Priority = ifelse(OTU %in% ids, 1, 0)
+#    )
+  group_by(Sample, Digesteur, Date, Best_Taxa) %>%
+    summarise(Abundance = sum(Abundance), .groups = "drop") %>%
+    mutate(Color_Group = ifelse(Best_Taxa %in% taxons_signifs, Best_Taxa, NA),
+          Sort_Priority = ifelse(Best_Taxa %in% taxons_signifs, 1, 0)
+    ) %>%
+    arrange(Sort_Priority, Abundance)
+
+  p <- ggplot(df_plot %>% arrange(Sort_Priority, Abundance),
+              aes(x = Sample, y = Abundance, fill = Color_Group, group = Sort_Priority)) +
+    geom_bar(stat = "identity", position = "stack", width = 0.9, color = NA) +
+    scale_fill_viridis_d(na.value = "grey20", option = "turbo") +
+    facet_grid(. ~ Date, scales = "free_x", space = "free_x") +
+    theme_classic() +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 7),
+      legend.position = "right",
+      legend.text = element_text(size = 7),
+      legend.key.size = unit(0.3, "cm"),
+      legend.title = element_text(size = 8, face = "bold"),
+          panel.grid = element_blank(),
+          strip.background = element_rect(fill = "grey90")) +
+    guides(fill = guide_legend(ncol = 2)) +
+    labs(title = paste("Mosaic", type_label, ":", comp_name, "padj <= 0.001"), y = "Abondance Relative")
+
+  ggsave(file.path(saving_folder, paste0("MosaicPhyloD2_", type_label, "_", comp_name, ".png")), p, width = 10, height = 7)
+}
+
+# 3. Boucle unique
+for (nom_comp in names(results_list)) {
+  res <- results_list[[nom_comp]]
+  t_act <- res$Time_Point[1]
+  t_ref <- res$Reference_Point[1]
+  
+  # Filtration rigoureuse (vérifie que Contig_ID correspond bien aux OTU de ton phyloseq)
+  ids_over  <- res %>% filter(padj <= 0.001, log2FoldChange >= 1.3) %>% pull(Contig_ID)
+  ids_under <- res %>% filter(padj <= 0.001, log2FoldChange <= -1.3) %>% pull(Contig_ID)
+
+  # Génération des deux types de plots
+  generate_mosaic(df_ps_base, ids_over, "Over", nom_comp, t_ref, t_act)
+  generate_mosaic(df_ps_base, ids_under, "Under", nom_comp, t_ref, t_act)
+}
+```

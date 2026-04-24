@@ -1,71 +1,54 @@
-import csv
-from types import SimpleNamespace
+import pandas as pd
 
-# 1. --- COMPATIBILITY SETTINGS ---
+# --- Compatibility stub (dev uniquement) ---
 try:
     snakemake
 except NameError:
+    from types import SimpleNamespace
     snakemake = SimpleNamespace(
-        input=SimpleNamespace(), 
-        output=SimpleNamespace(), 
-        params=SimpleNamespace(), 
-        wildcards=SimpleNamespace()
+        input  = SimpleNamespace(all_samples=["data/s1.tsv", "data/s2.tsv"],
+                                 current_sample="data/s1.tsv"),
+        output = SimpleNamespace(counts="out/s1_filtered.tsv"),
+        params = SimpleNamespace(abundance_threshold=10)
     )
 
-# 2. --- JOB DESCRIPTION ---
-def get_total_abundance(files):
+# --- Agrégation globale des reads par contig ---
+def get_total_abundance(files: list[str], contig_col: str = 0, reads_col: int = 2) -> pd.Series:
     """
-    Scan all files to sum reads per contig ID.
+    Somme les reads par contig_id sur tous les fichiers.
+    Retourne une Series indexée par contig_id.
     """
-    global_counts = {}
-    for path in files:
-        with open(path, 'r', encoding='utf-8') as f:
-            reader = csv.reader(f, delimiter='\t')
-            next(reader, None)  # Skip header
-            for columns in reader:
-                if len(columns) >= 3:
-                    try:
-                        c_id, reads = columns[0], int(columns[2])
-                        global_counts[c_id] = global_counts.get(c_id, 0) + reads
-                    except ValueError:
-                        continue
-    return global_counts
+    return (
+        pd.concat(
+            [pd.read_csv(f, sep="\t", usecols=[contig_col, reads_col]) for f in files],
+            ignore_index=True
+        )
+        .groupby(contig_col)[reads_col]  # groupby sur le nom de colonne
+        .sum()
+    )
 
-def filter_by_global_abundance(current_path, out_path, counts_dict, threshold):
-    """Filter current sample based on aggregated global counts."""
-    try:
-        with open(current_path, 'r', encoding='utf-8') as f_in, \
-             open(out_path, 'w', encoding='utf-8', newline='') as f_out:
+# --- Filtrage de l'échantillon courant ---
+def filter_by_global_abundance(current_path: str, out_path: str,
+                                global_counts: pd.Series, threshold: int) -> int:
+    """
+    Filtre le TSV courant : garde les contigs dont l'abondance globale >= threshold.
+    Retourne le nombre de lignes conservées.
+    """
+    df = pd.read_csv(current_path, sep="\t")
+    contig_col = df.columns[0]
 
-            reader = csv.reader(f_in, delimiter='\t')
-            writer = csv.writer(f_out, delimiter='\t')
+    df_filtered = df[df[contig_col].map(global_counts).fillna(0) >= threshold]
+    df_filtered.to_csv(out_path, sep="\t", index=False)
+    return len(df_filtered)
 
-            # Transfer Header
-            header = next(reader, None)
-            if header:
-                writer.writerow(header)
-
-            # Apply global filter
-            for columns in reader:
-                if columns and columns[0] in counts_dict:
-                    if counts_dict[columns[0]] >= threshold:
-                        writer.writerow(columns)
-        return True
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        return False
-
-# --- VARIABLE RETRIEVAL & EXECUTION ---
+# --- Exécution ---
 if __name__ == "__main__":
+    all_files  = snakemake.input.all_samples
+    current    = snakemake.input.current_sample
+    path_out   = snakemake.output.counts
+    threshold  = int(snakemake.params.abundance_threshold)
 
-    path_in = snakemake.input.data
-    current_file = [f for f in path_in if snakemake.wildcards.sample in f][0]
-    path_out = snakemake.output.filtered
-    min_total = snakemake.params.reads_threshold
+    global_counts = get_total_abundance(all_files)
+    n_kept = filter_by_global_abundance(current, path_out, global_counts, threshold)
 
-    abundance_dict = get_total_abundance(path_in)
-
-    if filter_by_global_abundance(current_file, path_out, abundance_dict, min_total):
-        print(f"✅ Successfully filtered -> {path_out}")
-    else:
-        raise RuntimeError(f"Filtering failed for {current_file}")
+    print(f"✓ {n_kept} contigs conservés (seuil abondance={threshold}) -> {path_out}")

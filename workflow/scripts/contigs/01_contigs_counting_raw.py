@@ -1,50 +1,36 @@
-import csv
-from types import SimpleNamespace
+import pandas as pd
 
-# 1. --- COMPATIBILITY SETTINGS ---
+# --- Compatibility stub (dev only) ---
 try:
     snakemake
 except NameError:
+    from types import SimpleNamespace
     snakemake = SimpleNamespace(
-        input=SimpleNamespace(), 
-        output=SimpleNamespace(), 
-        params=SimpleNamespace(), 
-        wildcards=SimpleNamespace()
+        input  = SimpleNamespace(raw_data="data/sample.tsv"),
+        output = SimpleNamespace(counts="out/sample_filtered.tsv"),
+        params = SimpleNamespace(length_threshold=1000),
+        wildcards = SimpleNamespace(sample="sample")
     )
 
-# 2. --- JOB DESCRIPTION ---
-def filter_tsv_contigs(input_path, output_path, threshold):
+# --- Filtering ---
+def filter_contigs(input_path: str, output_path: str, threshold: int) -> int:
     """
-    Fonction pure : elle ne dépend d'aucune variable globale.
-    Tout ce dont elle a besoin lui est passé en argument.
+    Reads the input, filters based on `contig_length` >= `threshold`, and writes the output to a TSV file.
+    Returns the number of retained contigs.
     """
-    try:
-        with open(input_path, 'r', encoding='utf-8') as f_in:
-            reader = csv.DictReader(f_in, delimiter='\t')
-            fieldnames = reader.fieldnames
-            kept_rows = [row for row in reader if int(row.get('contig_length', 0)) >= threshold]
+    df = pd.read_csv(input_path, sep="\t", dtype={"contig_length": int})
 
-        with open(output_path, 'w', encoding='utf-8', newline='') as f_out:
-            writer = csv.DictWriter(f_out, fieldnames=fieldnames, delimiter='\t')
-            writer.writeheader()
-            writer.writerows(kept_rows)
-        return True
-    
-    except Exception as e:
-        print(f"❌ Erreur : {e}")
-        return False
+    df_filtered = df[df["contig_length"] >= threshold]
 
-# 3. --- VARIABLE RETRIEVAL & EXECUTION ---
+    df_filtered.to_csv(output_path, sep="\t", index=False)
+    return len(df_filtered)
+
+# --- Execution ---
 if __name__ == "__main__":
 
-    path_in = snakemake.input.raw_data
-    current_file = [f for f in path_in if snakemake.wildcards.sample in f][0]
-    path_out = snakemake.output.counts
-    min_size = int(snakemake.params.length_threshold)
+    path_in   = snakemake.input.raw_data
+    path_out  = snakemake.output.counts
+    threshold = int(snakemake.params.length_threshold)
 
-    print(f"📊 Analyse de {current_file} (Seuil: {min_size})...")
-
-    if filter_tsv_contigs(current_file, path_out, min_size):
-        print(f"✅ Filtrage réussi -> {path_out}")
-    else:
-        raise RuntimeError(f"❌ Échec du traitement pour {current_file}")
+    n_kept = filter_contigs(path_in, path_out, threshold)
+    print(f"✓ {n_kept} contigs conservés (seuil={threshold}) -> {path_out}")

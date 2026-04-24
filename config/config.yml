@@ -1,29 +1,39 @@
+# ==========================================================================
+# Pipeline Metagenomics - Configuration
+# ==========================================================================
+
 # Chemins des données
 path :
   data_raw: "data/raw/"
+  metadata: "data/metadata"
+  taxonomy: "data/taxonomy"
+  phychim_parameters: "data/phychim_parameters"
+  gff3: "data/gff3"
 
 extensions :
   reads: ".kaijuNR"
   contigs: ".tsv"
   bakta: ".gff3"
+  plot: ".pdf"
+
 ################
 # Run parameters
 ################
-run_taxonomy: True
-  # Contigs
-run_contigs_counts : True
-run_contigs_filtered : True
-run_contigs_RPKM : True
-run_contigs_RPKM_filter : True
-run_contigs_intersec : True
-  # Plots
-run_barplot: True
-run_heatmap: True
-run_pca: True
+# --- Modules actifs ---
+run_taxonomy:     true
+run_reads:      true
+run_contigs:        true
+run_kegg:        true
+run_plots:        true
+run_deseq2:       true
+run_physico:      true
+run_qc:           true
+
 ####################
 # General parameters
 ####################
 deseq_label: "Genus"  # Options possibles : "Contig_ID", "Phylum", "Genus", etc.
+
 # Reads parameters
 reads:
   count_threshold: 10
@@ -33,6 +43,12 @@ contigs:
   length_threshold: 3000
   reads_threshold: 1000
   rpkm_threshold: 0.5
+
+# Kegg parameters
+kegg:
+  pvalue_threshold : 0.05
+  lfc_treshold : 1.3
+
 ####################
 # Graphic parameters
 ####################
@@ -44,13 +60,26 @@ taxonomic_levels:
   - "Genus"
   - "Species"
 
+pathway_levels:
+  - "level_1"
+  - "level_2"
+  - "level_3"
+  - "gene_description"
+
 plots:
 # Global
   shared:
     theme: "theme_minimal"
+    palette: "Turbo"
     width: 10
     height: 8
 # Plots
+
+  barplot:
+    top_n_taxa: 20
+
+  run_stackedbarplot:
+
   pca:
     color_by: "condition"
     point_size: 2
@@ -60,9 +89,10 @@ plots:
       size: 10
     axes:
       size: 10
+
   heatmap:
     cluster_rows: True
-    palette: "Turbo"
-  barplot:
-    top_n_taxa: 20
 
+  run_volcano:
+    pvalue_threshold : 0.05
+    lfc_treshold : 1.3

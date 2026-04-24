@@ -1,103 +1,52 @@
-import csv
-from types import SimpleNamespace
+import pandas as pd
 
-# 1. --- COMPATIBILITY SETTINGS ---
+# --- Compatibility stub (dev only) ---
 try:
     snakemake
 except NameError:
+    from types import SimpleNamespace
     snakemake = SimpleNamespace(
-        input=SimpleNamespace(), 
-        output=SimpleNamespace(),
-        wildcards=SimpleNamespace()
+        input  = SimpleNamespace(
+            data     = "data/s1_rpkm.tsv",
+            taxonomy = "data/taxonomy.tsv"
+        ),
+        output = SimpleNamespace(taxaname="out/s1_annotated.tsv")
     )
 
-# 2. --- JOB DESCRIPTION ---
-def load_taxonomy(tax_path):
+def load_taxonomy(tax_path: str) -> pd.Series:
     """
-    Loads taxonomy TSV into a dictionary {Contig_ID: Lineage}.
-    Expected format: [0] Class | [1] ID | [2] TaxID | [3] Lineage
+    Charge le fichier taxonomie.
+    Format attendu : [0] Class | [1] ID | [2] TaxID | [3] Lineage
+    Retourne une Series indexée par Contig_ID.
     """
-    tax_dict = {}
-    try:
-        with open(tax_path, 'r', encoding='utf-8') as f:
-            reader = csv.reader(f, delimiter='\t')
-            for cols in reader:
-                if len(cols) >= 4:
-                    contig_id = cols[1].strip()
-                    lineage = cols[3].strip()
-                    # Clean trailing semicolon if present
-                    if lineage.endswith(';'):
-                        lineage = lineage[:-1]
-                    tax_dict[contig_id] = lineage
-    except FileNotFoundError:
-        print(f"⚠️ Warning: Taxonomy file not found at {tax_path}")
-    return tax_dict
+    df = pd.read_csv(tax_path, sep="\t", header=None,
+                     usecols=[1, 3], names=["Contig_ID", "Lineage"])
+    df["Lineage"] = df["Lineage"].str.rstrip(";")
+    return df.set_index("Contig_ID")["Lineage"]
 
-def run_annotation(input_path, output_path, tax_dict):
+def run_annotation(input_path: str, output_path: str,
+                   taxonomy: pd.Series) -> int:
     """
-    Annotates RPKM data with taxonomy and sorts results by RPKM descending.
+    Annote les données RPKM avec la taxonomie,
+    trie par RPKM décroissant et écrit le résultat.
+    Retourne le nombre de contigs annotés.
     """
-    data_to_sort = []
-    header = None
+    df = pd.read_csv(input_path, sep="\t")
 
-    try:
-        with open(input_path, 'r', encoding='utf-8') as f_in:
-            reader = csv.reader(f_in, delimiter='\t')
-            
-            # Capture header
-            try:
-                header = next(reader)
-                header.append("Taxonomy")
-            except StopIteration:
-                return False
+    df["Taxonomy"] = df["Contig_ID"].map(taxonomy).fillna("Unclassified")
 
-            for cols in reader:
-                if len(cols) < 4:
-                    continue
-                
-                contig_id = cols[0].strip()
-                lineage = tax_dict.get(contig_id, "Unclassified")
-                
-                try:
-                    # Column index 3 is RPKM
-                    rpkm_val = float(cols[3])
-                    # Add lineage to the row data
-                    cols.append(lineage)
-                    data_to_sort.append((rpkm_val, cols))
-                    
-                except ValueError:
-                    continue
+    df = df.sort_values("RPKM", ascending=False)
+    df.to_csv(output_path, sep="\t", index=False)
 
-        # Sort data by RPKM (index 0 of the tuple) in descending order
-        data_to_sort.sort(key=lambda x: x[0], reverse=True)
+    return len(df)
 
-        # Write annotated and sorted file
-        with open(output_path, 'w', encoding='utf-8', newline='') as f_out:
-            writer = csv.writer(f_out, delimiter='\t')
-            if header:
-                writer.writerow(header)
-            
-            for item in data_to_sort:
-                writer.writerow(item[1])
+# --- Exécution ---
+if __name__ == "__main__":
+    taxonomy = load_taxonomy(snakemake.input.taxonomy)
 
-        return True
-
-    except Exception as e:
-        print(f"❌ Error during annotation: {e}")
-        return False
-
-# --- VARIABLE RETRIEVAL & EXECUTION ---
-
-path_in = snakemake.input.data
-current_file = [f for f in path_in if snakemake.wildcards.sample in f][0]
-path_taxonomy = snakemake.input.taxonomy
-path_out = snakemake.output.taxaname
-
-print(f"📊 Loading taxonomy reference...")
-taxonomy_map = load_taxonomy(path_taxonomy)
-
-print(f"📊 Annotating {current_file}...")
-if run_annotation(current_file, path_out, taxonomy_map):
-    print(f"✅ Annotation successful -> {path_out}")
-else:
-    raise RuntimeError(f"Annotation failed for {current_file}")
+    n_kept = run_annotation(
+        input_path  = snakemake.input.data,
+        output_path = snakemake.output.taxaname,
+        taxonomy    = taxonomy
+    )
+    print(f"✓ {n_kept} contigs annotés -> {snakemake.output.taxaname}")

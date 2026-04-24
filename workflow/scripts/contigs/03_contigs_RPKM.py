@@ -1,76 +1,44 @@
-import csv
-from types import SimpleNamespace
+import pandas as pd
 
-# 1. --- COMPATIBILITY SETTINGS ---
+# --- Compatibility stub (dev only) ---
 try:
     snakemake
 except NameError:
+    from types import SimpleNamespace
     snakemake = SimpleNamespace(
-        input=SimpleNamespace(), 
-        output=SimpleNamespace(),
-        wildcards=SimpleNamespace()
+        input  = SimpleNamespace(data="data/sample_1.tsv"),
+        output = SimpleNamespace(rpkm="results/sample_1_rpkm.tsv"),
     )
 
-# 2. --- JOB DESCRIPTION ---
-def calculate_rpkm_for_file(p_in, p_out):
+def calculate_rpkm(input_path: str, output_path: str) -> int:
     """
-    Calculates RPKM for each contig in the file.
-    Formula: (Mapped_Reads * 10^9) / (Contig_Length * Total_Mapped_Reads_in_Sample)
+    Calcule le RPKM par contig.
+    Formule : (Reads * 10^9) / (Length * Total_Mapped_Reads)
+    Retourne le nombre de contigs traités.
     """
-    try:
-        # Step 1: Calculate Total Mapped Reads (N) for the normalization factor
-        total_mapped_sample = 0
-        with open(p_in, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f, delimiter='\t')
-            for row in reader:
-                try:
-                    total_mapped_sample += int(row['Reads_Mapped'])
-                except (ValueError, KeyError):
-                    continue
-        
-        # Avoid division by zero if the sample has no reads
-        if total_mapped_sample == 0:
-            print("⚠️ Warning: Total mapped reads is zero. Cannot calculate RPKM.")
-            return False
+    df = pd.read_csv(input_path, sep="\t")
 
-        # Step 2: Calculate RPKM and write output
-        with open(p_in, 'r', encoding='utf-8') as f_in, \
-             open(p_out, 'w', encoding='utf-8', newline='') as f_out:
-            
-            reader = csv.DictReader(f_in, delimiter='\t')
-            # Prepare output header: original columns + RPKM
-            fieldnames = reader.fieldnames + ['RPKM']
-            writer = csv.DictWriter(f_out, fieldnames=fieldnames, delimiter='\t')
-            writer.writeheader()
+    required_cols = {"Reads_Mapped", "Length"}
+    missing = required_cols - set(df.columns)
+    if missing:
+        raise KeyError(f"Colonnes manquantes dans {input_path} : {missing}")
 
-            for row in reader:
-                try:
-                    reads = int(row['Reads_Mapped'])
-                    length = int(row['Length'])
-                    
-                    # Apply RPKM Formula
-                    rpkm_val = (reads * 10**9) / (length * total_mapped_sample)
-                    row['RPKM'] = f"{rpkm_val:.4f}"
-                    writer.writerow(row)
-                except (ValueError, KeyError, ZeroDivisionError):
-                    # Skip lines with invalid numeric data or zero length
-                    continue
+    total_mapped = df["Reads_Mapped"].sum()
 
-        return True
+    if total_mapped == 0:
+        print(f"⚠️  Total mapped reads = 0 pour {input_path}, RPKM mis à NaN.")
+        df["RPKM"] = float("nan")
+        df.to_csv(output_path, sep="\t", index=False)
+        return 0
 
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        return False
+    df["RPKM"] = ((df["Reads_Mapped"] * 1e9) / (df["Length"] * total_mapped)).round(4)
+    df.to_csv(output_path, sep="\t", index=False)
+    return len(df)
 
-# --- VARIABLE RETRIEVAL & EXECUTION ---
+# --- Exécution ---
+if __name__ == "__main__":
+    input_file  = snakemake.input.data
+    output_file = snakemake.output.rpkm
 
-path_in = snakemake.input.data
-current_file = [f for f in path_in if snakemake.wildcards.sample in f][0]
-path_out = snakemake.output.rpkm
-
-print(f"📊 Calculating RPKM for: {current_file}")
-if calculate_rpkm_for_file(current_file, path_out):
-    print(f"✅ RPKM calculation successful -> {path_out}")
-else:
-    # Raise error so Snakemake stops the pipeline
-    raise RuntimeError(f"RPKM calculation failed for {current_file}")
+    n_rows = calculate_rpkm(input_file, output_file)
+    print(f"✓ {n_rows} contigs traités -> {output_file}")

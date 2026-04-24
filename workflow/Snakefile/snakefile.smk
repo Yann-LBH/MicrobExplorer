@@ -1,3 +1,7 @@
+# ==========================================================================
+# Pipeline Metagenomics - Configuration
+# ==========================================================================
+
 import pandas as pd
 configfile: "../../../config/config.yaml"
 
@@ -111,7 +115,17 @@ rule generate_plots:
         "Rscript -e 'renv::restore(); source(\"scripts/plotting/07_barplot.R\")'"
 
 
+rule all:
+    input:
+        "results/plots_parameters/"
 
+rule generate_physico_plots:
+    input:
+        "data/parameters.xlsx"
+    output:
+        directory("results/plots_parameters/")
+    script:
+        "scripts/plot_parameters.R"
 
 
 
@@ -155,3 +169,48 @@ rule qc:
     input: ######
     ouput: "report/qc_contigs.tsv"
     script: "scripts/utils/B_contigsqc.py"
+
+
+# Dans ton Snakefile fin traitement avant script R
+rule aggregate_filtered_contigs:
+    input:
+        expand("out/{sample}_filtered.tsv", sample=SAMPLES)
+    output:
+        "Data/Parquet/contigs_filtered.parquet"
+    run:
+        import pandas as pd
+
+        pd.concat(
+            [pd.read_csv(f, sep="\t").assign(sample=f.split("/")[-1].replace("_filtered.tsv",""))
+             for f in input],
+            ignore_index=True
+        ).to_parquet(output[0], index=False)
+
+# Script 2 contigs
+rule filter_abundance:
+    input:
+        all_samples   = expand("out/{sample}_step1.tsv", sample=SAMPLES),
+        current_sample = "out/{sample}_step1.tsv"
+    output:
+        counts = "out/{sample}_step2.tsv"
+    params:
+        abundance_threshold = 10
+    script:
+        "scripts/filter_abundance.py"
+
+rule pca:
+    input:
+        parquet  = expand("Data/Parquet/{sample}_annotated.parquet", sample=SAMPLES),
+        metadata = "metadata/metadata.xlsx",
+        physico  = "Physico-chimique/Thermophiles.xlsx"
+    output:
+        pdf     = "Graphique/ACP/ACP_results.pdf",
+        parquet = "Data/Parquet/pca_results.parquet",
+        csv     = "Graphique/ACP/contributions.csv"
+    params:
+        dim_x        = 1,
+        dim_y        = 2,
+        physico_cols = ["pH", "AGV mg/l"],
+        n_top        = 10
+    script:
+        "scripts/pca.R"

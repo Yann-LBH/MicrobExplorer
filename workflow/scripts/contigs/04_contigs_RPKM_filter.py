@@ -1,91 +1,49 @@
-import csv
-from types import SimpleNamespace
+import pandas as pd
 
-# 1. --- COMPATIBILITY SETTINGS ---
+# --- Compatibility stub (dev only) ---
 try:
     snakemake
 except NameError:
+    from types import SimpleNamespace
     snakemake = SimpleNamespace(
-        input=SimpleNamespace(), 
-        output=SimpleNamespace(), 
-        params=SimpleNamespace(), 
-        wildcards=SimpleNamespace()
+        input  = SimpleNamespace(data=["data/s1.tsv", "data/s2.tsv"],
+                                 current_sample="data/s1.tsv"),
+        output = SimpleNamespace(rpkm="out/s1_filtered.tsv"),
+        params = SimpleNamespace(rpkm_threshold=0.1)
     )
 
-# 2. --- JOB DESCRIPTION ---
-def get_min_rpkm_across_samples(files):
+def get_min_rpkm_across_samples(files: list[str]) -> pd.Series:
     """
-    Scans all files to find the minimum RPKM value for each contig across the dataset.
-    If a contig is missing in one sample, its minimum RPKM is effectively 0.0.
+    Retourne le RPKM minimum par contig sur tous les échantillons.
+    Un contig absent d'un échantillon vaut 0.0 pour cet échantillon.
     """
-    min_rpkm_map = {}
-    is_first_file = True
-    
-    for path in files:
-        current_sample_data = {}
-        with open(path, 'r', encoding='utf-8') as f:
-            # Using DictReader to access columns by their header names
-            reader = csv.DictReader(f, delimiter='\t')
-            for row in reader:
-                try:
-                    contig_id = row['Contig_ID']
-                    rpkm_val = float(row['RPKM'])
-                    current_sample_data[contig_id] = rpkm_val
-                except (ValueError, KeyError):
-                    continue
+    frames = [
+        pd.read_csv(f, sep="\t", usecols=["Contig_ID", "RPKM"])
+          .set_index("Contig_ID")["RPKM"]
+        for f in files
+    ]
+    # concat en colonnes puis min par ligne — gère les NaN (contig absent) comme 0.0
+    return pd.concat(frames, axis=1).fillna(0.0).min(axis=1)
 
-        if is_first_file:
-            min_rpkm_map = current_sample_data
-            is_first_file = False
-        else:
-            # Update global map: only keep the intersection of IDs with the minimum value
-            for cid in list(min_rpkm_map.keys()):
-                if cid in current_sample_data:
-                    min_rpkm_map[cid] = min(min_rpkm_map[cid], current_sample_data[cid])
-                else:
-                    # Contig missing in this sample results in a 0.0 minimum
-                    min_rpkm_map[cid] = 0.0
-                    
-    return min_rpkm_map
-
-def filter_by_min_rpkm(input_path, output_path, min_map, threshold_val):
+def filter_by_min_rpkm(current_path: str, output_path: str,
+                        global_min: pd.Series, threshold: float) -> int:
     """
-    Writes the output file keeping only contigs that meet the global minimum RPKM.
+    Filtre le TSV courant : garde les contigs dont le RPKM min global >= threshold.
+    Retourne le nombre de lignes conservées.
     """
-    try:
-        with open(input_path, 'r', encoding='utf-8') as f_in, \
-             open(output_path, 'w', encoding='utf-8', newline='') as f_out:
+    df = pd.read_csv(current_path, sep="\t")
+    mask = df["Contig_ID"].map(global_min).fillna(0.0) >= threshold
+    df[mask].to_csv(output_path, sep="\t", index=False)
+    return mask.sum()
 
-            reader = csv.DictReader(f_in, delimiter='\t')
-            writer = csv.DictWriter(f_out, fieldnames=reader.fieldnames, delimiter='\t')
-            
-            writer.writeheader()
+# --- Exécution ---
+if __name__ == "__main__":
+    all_files  = snakemake.input.data
+    current    = snakemake.input.current_sample
+    path_out   = snakemake.output.rpkm
+    threshold  = float(snakemake.params.rpkm_threshold)
 
-            for row in reader:
-                contig_id = row.get('Contig_ID')
-                # Only write row if the global minimum for this ID meets the threshold
-                if contig_id and min_map.get(contig_id, 0.0) >= threshold_val:
-                    writer.writerow(row)
-              
-        return True
-    except Exception as e:
-        print(f"❌ Error during filtering: {e}")
-        return False
+    global_min = get_min_rpkm_across_samples(all_files)
+    n_kept     = filter_by_min_rpkm(current, path_out, global_min, threshold)
 
-# --- VARIABLE RETRIEVAL & EXECUTION ---
-
-path_in_list = snakemake.input.data
-current_file = [f for f in path_in_list if snakemake.wildcards.sample in f][0]
-path_out = snakemake.output.rpkm
-threshold = float(snakemake.params.rpkm_threshold)
-
-# 1. Aggregate minimum values across all samples
-print(f"📊 Calculating global minimum RPKM across {len(path_in_list)} files...")
-global_min_dict = get_min_rpkm_across_samples(path_in_list)
-
-# 2. Filter the current file based on the aggregated data
-print(f"📊 Filtering {current_file} (Threshold: {threshold})...")
-if filter_by_min_rpkm(current_file, path_out, global_min_dict, threshold):
-    print(f"✅ RPKM filtering successful -> {path_out}")
-else:
-    raise RuntimeError(f"RPKM filtering failed for {current_file}")
+    print(f"✓ {n_kept} contigs conservés (seuil RPKM={threshold}) -> {path_out}")

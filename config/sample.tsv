@@ -1,0 +1,4 @@
+sample      contigs_file                        reads_file
+TD1_250101  data/raw/contigs/TD1_250101.tsv     data/raw/reads/TD1_250101.txt
+TD2_250101  data/raw/contigs/TD2_250101.tsv     data/raw/reads/TD2_250101.txt
+TD3_250101  data/raw/contigs/TD3_250101.tsv     data/raw/reads/TD3_250101.txt
