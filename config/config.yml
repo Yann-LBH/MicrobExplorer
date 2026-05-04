@@ -3,10 +3,16 @@
 # ==========================================================================
 
 # Chemins des données
-path :
+path:
   data_raw: "data/raw/"
   metadata: "data/metadata"
-  taxonomy: "data/taxonomy"
+  taxonomy_ncbi: 
+    zip_url: "https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip"
+    dmp_name: "data/taxonomy_ncbi"
+  taxonomy_megahit: "data/taxonomy_megahit/taxname.txt"
+  taxonomy_bakta: 
+    local_path: "data/taxonomy_ncbi"
+    url : "https://rest.kegg.jp/get/br:ko00001"
   phychim_parameters: "data/phychim_parameters"
   gff3: "data/gff3"
 

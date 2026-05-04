@@ -9,7 +9,13 @@ def get_kegg_hierarchy():
     Fetches and parses the KEGG hierarchy (ko00001) to extract 
     functional levels, EC numbers, and calculates KO weights.
     """
-    url = "https://rest.kegg.jp/get/br:ko00001"
+    # Use the URL passed from the Snakemake rule params
+    url = snakemake.params.url
+    
+    # English comment: Fetching data from KEGG REST API
+    response = requests.get(url)
+    response.raise_for_status()
+    content = response.text
     
     # Pre-compile regex patterns for significant speedup in loops
     re_clean_ab = re.compile(r'^[A-B\s]*\d+\s+')

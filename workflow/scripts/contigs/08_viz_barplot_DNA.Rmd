@@ -1,0 +1,100 @@
+---
+title: "Barplot"
+author: "Yann Le Bihan"
+date: "2026-01-27"
+output: html_document
+---
+# Library
+```{r setup, include=FALSE}
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+library(purrr)
+library(viridis)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Settings
+```{r}
+# --- Global settings ---
+data_path <- "Statistics/Coassembly"
+saving_path <- "Graphique/Barplot/Statistics"
+```
+
+# Folder creation
+```{r}
+# --- Folder creation --
+for (source_name in names(data_path)) {
+  path_to_create <- file.path(saving_path, source_name)
+  if (!dir.exists(path_to_create)) {
+    dir.create(path_to_create, recursive = TRUE)
+    message(paste("Dossier créé :", path_to_create))
+  } else {
+  message(paste("Le dossier existe déjà :", saving_path))
+  }
+}
+```
+
+# Content
+```{r cars}
+# --- 1. Chargement et Filtrage ---
+read_complet_folder <- function(folder_path, extension = ".txt") {
+  
+  files <- list.files(path = folder_path, 
+                        pattern = paste0("\\", extension, "$"), 
+                        full.names = TRUE)
+  
+  if (length(files) == 0) {
+    stop("Aucun fichier trouvé dans le dossier spécifié.")
+  }
+  
+  cat("Trouvé", length(files), "fichiers.\n")
+
+  data_list <- lapply(files, function(f) {
+    cat("Lecture de :", basename(f), "\n")
+  lignes <- readLines(f, warn = FALSE)
+  
+    sample_name <- gsub(extension, "", basename(f))
+    sample_name <- gsub("counted_mapped_", "", sample_name)
+    sample_name <- gsub("_([0-9]{2})([0-9]{2})([0-9]{2})", " 20\\1-\\2-\\3", sample_name)
+    
+    # On cherche la ligne "Pourcentage"
+    ligne_cible <- grep("Pourcentage de mapping", lignes, value = TRUE)
+    
+    # Extraction numérique (on remplace la virgule par un point si besoin)
+    valeur <- as.numeric(gsub(",", ".", gsub("[^0-9.,]", "", ligne_cible)))
+    
+    # Retourner un petit data.frame pour cet échantillon
+    return(data.frame(
+      Echantillon = sample_name, 
+      Mapping_Rate = valeur
+    ))
+  })
+df_final <- do.call(rbind, data_list)
+  return(df_final)
+}
+df_mapping <- read_complet_folder(data_path)
+```
+#Plots
+```{r pressure, echo=FALSE}
+# ==========================================================================
+# GRAPHIQUES (BARPLOTS - VERSION MOYENNÉE)
+# ==========================================================================
+
+df_mapping$Echantillon <- factor(df_mapping$Echantillon, levels = rev(df_mapping$Echantillon))
+
+Stats <- ggplot(df_mapping, aes(x = Echantillon, y = Mapping_Rate)) +
+            geom_bar(stat = "identity", fill = "#008c8e") +
+            theme_classic() +
+            labs(title = "Taux de Mapping par Échantillon", y = "Pourcentage (%)") +
+            coord_flip()  # Optionnel : pour mieux lire les noms d'échantillons
+
+# Sauvegardes
+ggsave(file.path(saving_path, "Stats_mapping.png"), Stats)
+
+# Affichage
+print(Stats)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

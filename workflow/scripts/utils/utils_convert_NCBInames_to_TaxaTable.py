@@ -7,8 +7,8 @@ try:
     snakemake
 except NameError:
     snakemake = SimpleNamespace(
-        input  = SimpleNamespace(zip="A.Taxa_Table_NCBI/new_taxdump.zip"),
-        output = SimpleNamespace(csv="B.Taxa_Table_CSV/mapping_taxons.csv"),
+        input  = SimpleNamespace(zip="data/taxonomy/new_taxdump.zip"),
+        output = SimpleNamespace(csv="data/taxonomy/mapping_taxons.csv"),
         params = SimpleNamespace(dmp_name="rankedlineage.dmp")
     )
 

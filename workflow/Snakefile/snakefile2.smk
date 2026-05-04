@@ -9,8 +9,8 @@ configfile: "config/config.yaml"
 
 data           = pd.read_csv("config/samples.tsv", sep="\t")
 SAMPLES        = data["sample"].tolist()
-CONTIGS_FILES  = dict(zip(data["sample"], data["contigs_file"]))
 READS_FILES    = dict(zip(data["sample"], data["reads_file"]))
+CONTIGS_FILES  = dict(zip(data["sample"], data["contigs_file"]))
 KEGG_FILES     = dict(zip(data["sample"], data["kegg_file"]))
 
 # ==========================================================================
@@ -45,8 +45,8 @@ def get_targets():
     if config["run_plots"]:
         targets += [
             "results/plots/heatmap/Heatmaps.pdf",
-            "results/plots/barplot/Barplots.pdf",
-            source=["contigs", "reads"]
+            expand("results/plots/barplot_taxonomy/{source}/Barplots.pdf",
+                source=["contigs", "reads"]),
             "results/plots/barplot_taxonomy/Barplots_taxonomy.pdf",
             "results/plots/barplot_qc/Barplot_QC.pdf",
             "results/plots/pca/ACP_results.pdf"
@@ -71,16 +71,17 @@ rule all:
 # UTILS — Taxonomie NCBI
 # ==========================================================================
 rule download_taxonomy:
+    input:
+        zip = temp("data/taxonomy/new_taxdump.zip")
     output:
-        zip = temp("data/taxonomy/new_taxdump.zip"),
         csv = "data/taxonomy/mapping_taxons.csv"
     params:
-        url      = config["taxonomy"]["zip_url"],
-        dmp_name = config["taxonomy"]["dmp_name"]
+        url      = config["taxonomy_ncbi"]["zip_url"],
+        dmp_name = config["taxonomy_ncbi"]["dmp_name"]
     conda:   "envs/python_env.yaml"
     shell:
         "wget -q {params.url} -O {output.zip} && "
-        "python scripts/utils/download_taxonomy.py"
+        "python scripts/utils/download_NCBI_taxatable.py"
 
 # ==========================================================================
 # UTILS — QC
@@ -116,7 +117,7 @@ rule reads_filter:
 rule reads_add_taxaname:
     input:
         data     = "results/reads/1.Filtered/{sample}_filtered.tsv",
-        taxonomy = "data/taxonomy/mapping_taxons.csv"
+        taxonomy = "data/taxonomy_ncbi/mapping_taxons.csv"
     output:
         taxaname = "results/reads/2.Final_Results/{sample}_annotated.tsv"
     conda:   "envs/python_env.yaml"
@@ -178,7 +179,7 @@ rule contigs_intersection:
 rule contigs_add_taxaname:
     input:
         data     = "results/contigs/5.Intersection/{sample}_intersec.tsv",
-        taxonomy = "data/taxonomy/mapping_taxons.csv"
+        taxonomy = config["taxonomy_megahit"]
     output:
         taxaname = "results/contigs/6.Final_Results/{sample}_annotated.tsv"
     conda:   "envs/python_env.yaml"
@@ -240,7 +241,7 @@ rule kegg_standardization_agregation:
 rule kegg_merge_pathway_levels:
     input:
         data     = "results/kegg/5.Intersection/{sample}_intersec.tsv",
-        taxonomy = "data/taxonomy/mapping_taxons.csv"
+        taxonomy = config["taxonomy_bakta"]["url"]
     output:
         taxaname = "results/kegg/6.Final_Results/{sample}_annotated.tsv"
     conda:   "envs/python_env.yaml"
