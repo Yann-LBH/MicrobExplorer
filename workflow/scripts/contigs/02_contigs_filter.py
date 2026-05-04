@@ -13,19 +13,19 @@ except NameError:
     )
 
 # --- Agrégation globale des reads par contig ---
-def get_total_abundance(files: list[str], contig_col: str = 0, reads_col: int = 2) -> pd.Series:
+def get_total_abundance(files: list[str]) -> pd.Series:
     """
     Somme les reads par contig_id sur tous les fichiers.
     Retourne une Series indexée par contig_id.
     """
-    return (
-        pd.concat(
-            [pd.read_csv(f, sep="\t", usecols=[contig_col, reads_col]) for f in files],
-            ignore_index=True
+    global_counts = pd.Series(dtype=int)
+    for f in files:
+        chunk = pd.read_csv(f, sep="\t", usecols=[0, 2])
+        global_counts = global_counts.add(
+            chunk.groupby(chunk.columns[0])[chunk.columns[2]].sum(),
+            fill_value=0
         )
-        .groupby(contig_col)[reads_col]  # groupby sur le nom de colonne
-        .sum()
-    )
+    return global_counts
 
 # --- Filtrage de l'échantillon courant ---
 def filter_by_global_abundance(current_path: str, out_path: str,

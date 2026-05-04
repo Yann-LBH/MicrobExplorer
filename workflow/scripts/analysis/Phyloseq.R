@@ -66,6 +66,7 @@ ps_kegg <- phyloseq(
 
 # --- Export to RDS ---
 # A better alternative to Parquet for using phyloseq in Shiny
-saveRDS(ps_kegg, file.path(saving_folder, "ps_kegg_final.rds"))
+output_rds <- snakemake[["output"]][["rds"]]
+saveRDS(ps_kegg, output_rds)
 
 message("✓ Shiny-ready RDS object created.")

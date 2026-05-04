@@ -69,7 +69,7 @@ lapply(reacteurs, function(r) {
   top_taxa <- names(sort(taxa_sums(ps_sub), decreasing = TRUE))[seq_len(min(top_n, ntaxa(ps_sub)))]
   ps_top   <- prune_taxa(top_taxa, ps_sub)
   
-  mat <- log10(as(otu_table(ps_top), "matrix") + 1)
+  mat <- log10(otu_table(ps_top)@.Data + 1)
   mat <- mat[rowSums(mat) > 0, , drop = FALSE]
   
   if (nrow(mat) < 2L) {

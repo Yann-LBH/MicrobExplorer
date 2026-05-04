@@ -39,7 +39,7 @@ PLOT_CONFIG = {
     "stacked_barplot": ["07_barplot.R", "data/processed/stacked_barplot_data.rds"],
     "heatmap": ["08_heatmap.R", "data/processed/all_samples_consolidated.rds"],
     "pca":     ["09_ACP.R",     "data/processed/all_samples_consolidated.rds"],
-    "volcano": ["10_volcano.R", "data/processed/deseq2_results.rds"],
+    "volcano": ["10_volcano.R", "data/processed/deseq2_results.rds"]
 }
 
 PLOT_CONFIG = {

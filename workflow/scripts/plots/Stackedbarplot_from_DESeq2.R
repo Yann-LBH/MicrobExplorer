@@ -22,6 +22,8 @@ rds_out     <- snakemake[["output"]][["rds"]]         # "RDS_obj/processed_plot_
 
 # Thresholds from config
 padj_threshold <- snakemake@config[["padj"]] %||% 0.05
+lfc_thresh  <- snakemake@config[["lfc"]]  %||% 0
+ids_over <- res[padj <= padj_threshold & lfc <=log2FoldChange, Contig_ID] 
 
 # ==========================================================================
 # 1. Data Preparation

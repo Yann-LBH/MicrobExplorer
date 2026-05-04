@@ -16,7 +16,7 @@ library(readr)  # uniquement pour read_tsv — fread gère aussi les TSV
 # ==========================================================================
 data_path     <- snakemake[["input"]][["data_path"]]    # "Statistics/3_Deseq2"
 saving_folder <- snakemake[["output"]][["rds_dir"]]     # "RDS_obj/"
-parquet_dir   <- snakemake[["output"]][["parquet_dir"]] # "Data/Parquet/deseq2/"
+parquet_dir   <- snakemake[["parameter"]][["parquet_dir"]] # "Data/Parquet/deseq2/"
 
 dir.create(saving_folder, recursive = TRUE, showWarnings = FALSE)
 dir.create(parquet_dir,   recursive = TRUE, showWarnings = FALSE)

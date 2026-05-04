@@ -4,11 +4,6 @@ import os
 ROOT_FOLDER = "Data"
 EXIT_FOLDER = "1.Counted_kaiju"
 
-# Supprime physiquement le fichier avant de le recréer
-if os.path.exists(EXIT_FOLDER):
-    os.remove(EXIT_FOLDER)
-    print(f"Ancien fichier {EXIT_FOLDER} supprimé.")
-
 def analyser_kaiju(enter_path, exit_path):
     counter = {}
     

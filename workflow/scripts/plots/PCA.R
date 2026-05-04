@@ -58,7 +58,7 @@ dir.create(dirname(snakemake$output$parquet), recursive = TRUE, showWarnings = F
 
 # Parquet : lecture multi-fichiers si nécessaire
 files <- unlist(snakemake$input$parquet)
-df_final <- rbindlist(lapply(files, read_parquet), use.names = TRUE, fill = TRUE)
+df_final <- rbindlist(lapply(files, read_parquet(f, col_select = c("Date", "Digesteur", "Contig_ID", "RPKM"))), use.names = TRUE, fill = TRUE)
 
 # Metadata
 meta <- as.data.table(read_excel(snakemake$input$metadata))

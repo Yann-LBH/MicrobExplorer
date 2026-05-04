@@ -11,6 +11,7 @@ data           = pd.read_csv("config/samples.tsv", sep="\t")
 SAMPLES        = data["sample"].tolist()
 CONTIGS_FILES  = dict(zip(data["sample"], data["contigs_file"]))
 READS_FILES    = dict(zip(data["sample"], data["reads_file"]))
+KEGG_FILES     = dict(zip(data["sample"], data["kegg_file"]))
 
 # ==========================================================================
 # Cibles finales
@@ -48,7 +49,7 @@ def get_targets():
             source=["contigs", "reads"]
             "results/plots/barplot_taxonomy/Barplots_taxonomy.pdf",
             "results/plots/barplot_qc/Barplot_QC.pdf",
-            "results/plots/pca/ACP_results.pdf",
+            "results/plots/pca/ACP_results.pdf"
         ]
 
     # --- DESeq2 + Physico ---
@@ -56,7 +57,7 @@ def get_targets():
         targets += [
             "results/deseq2/deseq2_digesteur_vs_TD1.parquet",
             "results/deseq2/deseq2_date_timeline.parquet",
-            "results/deseq2/deseq2_digesteur_combos.parquet",
+            "results/deseq2/deseq2_digesteur_combos.parquet"
         ]
     if config["run_physico"]:
         targets.append("results/plots/physico/Physico_plots.pdf")
@@ -300,18 +301,18 @@ rule plot_barplot_taxonomy:
     conda:  "envs/r_env.yaml"
     script: "scripts/plots/barplot_taxonomy.R"
 
-rule plot_barplot_taxonomy:
-    input:
-        intersec = expand("results/contigs/6.Final_Results/{sample}_annotated.tsv", sample=SAMPLES),
-        contigs  = expand("results/contigs/3.RPKM/{sample}_rpkm.tsv", sample=SAMPLES)
-    output:
-        pdf     = "results/plots/barplot_taxonomy/Barplots_taxonomy.pdf",
-        parquet = "Data/Parquet/barplot_taxonomy.parquet"
-    params:
-        target_rank = config["plots"]["target_rank"],
-        top_n       = config["plots"]["top_n"]
-    conda:  "envs/r_env.yaml"
-    script: "scripts/plots/barplot_taxonomy.R"
+#rule plot_barplot_taxonomy:
+#    input:
+#        intersec = expand("results/contigs/6.Final_Results/{sample}_annotated.tsv", sample=SAMPLES),
+#        contigs  = expand("results/contigs/3.RPKM/{sample}_rpkm.tsv", sample=SAMPLES)
+#    output:
+#        pdf     = "results/plots/barplot_taxonomy/Barplots_taxonomy.pdf",
+#        parquet = "Data/Parquet/barplot_taxonomy.parquet"
+#    params:
+#        target_rank = config["plots"]["target_rank"],
+#        top_n       = config["plots"]["top_n"]
+#    conda:  "envs/r_env.yaml"
+#    script: "scripts/plots/barplot_taxonomy.R"
 
 rule plot_pca:
     input:
