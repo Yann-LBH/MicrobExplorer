@@ -71,13 +71,12 @@ rule all:
 # UTILS — Taxonomie NCBI
 # ==========================================================================
 rule download_taxonomy:
-    input:
-        zip = temp("data/taxonomy/new_taxdump.zip")
     output:
-        csv = "data/taxonomy/mapping_taxons.csv"
+        zip = temp("data/taxonomy/new_taxdump.zip"),
+        csv = "data/taxonomy_ncbi/mapping_taxons.csv"
     params:
-        url      = config["taxonomy_ncbi"]["zip_url"],
-        dmp_name = config["taxonomy_ncbi"]["dmp_name"]
+        url      = config["path"]["taxonomy_ncbi"]["zip_url"],
+        dmp_name = config["path"]["taxonomy_ncbi"]["dmp_name"]
     conda:   "envs/python_env.yaml"
     shell:
         "wget -q {params.url} -O {output.zip} && "
@@ -86,115 +85,136 @@ rule download_taxonomy:
 # ==========================================================================
 # UTILS — QC
 # ==========================================================================
-rule qc_report:
+rule qc_reads:
     input:
-        contigs = expand("results/contigs/6.Final_Results/{sample}_annotated.tsv", sample=SAMPLES),
         reads   = expand("results/reads/2.Final_Results/{sample}_annotated.tsv",   sample=SAMPLES)
     output:
-        tsv = "results/qc/Rapport_QC_Final.tsv",
-        pdf = "results/plots/barplot_qc/Barplot_QC.pdf",
-        parquet = "Data/Parquet/qc_report.parquet"
-    params:
-        ordre = config["plots"]["qc"]["ordre"]
+        tsv = "report/qc_reads/Rapport_QC_Reads.tsv",
+        pdf = "report/qc_reads/Plots_QC_Reads.pdf",
+        parquet = "report/qc_reads/Parquet_QC_Reads.parquet"
     conda:  "envs/r_env.yaml"
-    script: "scripts/utils/qc_report.R"
+    script: "../scripts/utils/utils_qc_Reads.R"
+
+rule qc_contigs:
+    input:
+        contigs = expand("results/contigs/6.Final_Results/{sample}_annotated.tsv", sample=SAMPLES)
+    output:
+        tsv = "report/qc_contigs/Rapport_QC_Contigs.tsv",
+        pdf = "report/qc_contigs/Plots_QC_Contigs.pdf",
+        parquet = "report/qc_contigs/Parquet_QC_Contigs.parquet"
+    conda:  "envs/r_env.yaml"
+    script: "../scripts/utils/utils_qc_Contigs.R"
+
+rule qc_kegg:
+    input:
+        kegg = expand("results/contigs/6.Final_Results/{sample}_annotated.tsv", sample=SAMPLES)
+    output:
+        tsv = "report/qc_kegg/Rapport_QC_Kegg.tsv",
+        pdf = "report/qc_kegg/Plots_QC_Kegg.pdf",
+        parquet = "report/qc_kegg/Parquet_QC_Kegg.parquet"
+    conda:  "envs/r_env.yaml"
+    script: "../scripts/utils/utils_qc_Kegg.R"
+
 
 # ==========================================================================
-# READS — 2 étapes
+# READS — 3 étapes
 # ==========================================================================
-rule reads_filter:
+rule run_reads:
     input:
-        mapping    = "data/taxonomy/mapping_taxons.csv",
-        reads      = lambda w: READS_FILES[w.sample]
+        raw_data = lambda w: READS_FILES[w.sample]
     output:
-        counts = "results/reads/1.Filtered/{sample}_filtered.tsv"
+        counts = "results/reads/1.Counted/counted_{sample}_reads.tsv"
     params:
         top_n = config["reads"]["top_n"],
         noise = config["reads"]["noise"]
     conda:   "envs/python_env.yaml"
-    script:  "scripts/reads/01_filter_reads.py"
+    script:  "../scripts/reads/01_reads_counting_raw.py"
+
+rule reads_filter:
+    input:
+        data     = "results/reads/1.Counted/counted_{sample}_reads.tsv"
+    output:
+        filters = "results/reads/2.Filtered/filtered_{sample}_reads.tsv"
+    conda:   "envs/python_env.yaml"
+    script:  "../scripts/reads/02_reads_filter.py"
 
 rule reads_add_taxaname:
     input:
-        data     = "results/reads/1.Filtered/{sample}_filtered.tsv",
+        data     = "results/reads/2.Filtered/filtered_{sample}_reads.tsv",
         taxonomy = "data/taxonomy_ncbi/mapping_taxons.csv"
     output:
-        taxaname = "results/reads/2.Final_Results/{sample}_annotated.tsv"
+        taxaname = "results/reads/3.Annotated/annotated_{sample}_reads.tsv"
     conda:   "envs/python_env.yaml"
-    script:  "scripts/reads/02_add_taxaname.py"
+    script:  "../scripts/reads/03_replace_TaxaID_by_Phylo.py"
 
 # ==========================================================================
 # CONTIGS — 6 étapes
 # ==========================================================================
-rule contigs_filter_length:
+rule run_contigs:
     input:
         raw_data = lambda w: CONTIGS_FILES[w.sample]
     output:
-        counts = "results/contigs/1.Raw_Counting/{sample}_counts.tsv"
+        counts = "results/contigs/1.Counted/counted_{sample}_reads.tsv"
     params:
         length_threshold = config["contigs"]["length_threshold"]
     conda:   "envs/python_env.yaml"
-    script:  "scripts/contigs/01_filter_length.py"
+    script:  "scripts/contigs/01_Contigs_counting.py"
 
-rule contigs_filter_abundance:
+rule contigs_filter:
     input:
-        all_samples    = expand("results/contigs/1.Raw_Counting/{sample}_counts.tsv", sample=SAMPLES),
-        current_sample = "results/contigs/1.Raw_Counting/{sample}_counts.tsv"
+        data    = expand("results/contigs/1.Counting/counted_{sample}_contigs.tsv", sample=SAMPLES)
+        #current_sample = "results/contigs/1.Counting/counted_{sample}_contigs.tsv"
     output:
-        counts = "results/contigs/2.Filtered/{sample}_filtered.tsv"
+        filters = "results/contigs/2.Filtered/filtered_{sample}_contigs.tsv"
     params:
         abundance_threshold = config["contigs"]["abundance_threshold"]
     conda:   "envs/python_env.yaml"
-    script:  "scripts/contigs/02_filter_abundance.py"
+    script:  "scripts/contigs/02_Contigs_filter.py"
 
 rule contigs_rpkm:
     input:
-        data = "results/contigs/2.Filtered/{sample}_filtered.tsv"
+        data = "results/contigs/2.Filtered/filtered_{sample}_contigs.tsv"
     output:
-        rpkm = "results/contigs/3.RPKM/{sample}_rpkm.tsv"
+        rpkm = "results/contigs/3.RPKM/rpkm_{sample}_contigs.tsv"
     conda:   "envs/python_env.yaml"
-    script:  "scripts/contigs/03_rpkm.py"
+    script:  "scripts/contigs/03_Contigs_RPKM.py"
 
 rule contigs_rpkm_filter:
     input:
-        data           = expand("results/contigs/3.RPKM/{sample}_rpkm.tsv", sample=SAMPLES),
-        current_sample = "results/contigs/3.RPKM/{sample}_rpkm.tsv"
+        data = expand("results/contigs/3.RPKM/rpkm_{sample}_contigs.tsv", sample=SAMPLES),
     output:
-        rpkm = "results/contigs/4.RPKM_Filtered/{sample}_rpkm_filtered.tsv"
+        rpkm_filters = "results/contigs/4.RPKM_Filtered/rpkm_filtered_{sample}_contigs.tsv"
     params:
         rpkm_threshold = config["contigs"]["rpkm_threshold"]
     conda:   "envs/python_env.yaml"
-    script:  "scripts/contigs/04_rpkm_filter.py"
+    script:  "scripts/contigs/04_Contigs_RPKM_filter.py"
 
-rule contigs_intersection:
+rule contigs_union:
     input:
-        abund  = "results/contigs/2.Filtered/{sample}_filtered.tsv",
-        rpkm   = "results/contigs/4.RPKM_Filtered/{sample}_rpkm_filtered.tsv",
-        source = "results/contigs/3.RPKM/{sample}_rpkm.tsv"
+        abund  = "results/contigs/2.Filtered/filtered_{sample}_contigs.tsv",
+        rpkm   = "results/contigs/4.RPKM_Filtered/rpkm_filtered_{sample}contigs.tsv"
     output:
-        out = "results/contigs/5.Intersection/{sample}_intersec.tsv"
+        union = "results/contigs/5.Intersection/union_{sample}_contigs.tsv"
     conda:   "envs/python_env.yaml"
     script:  "scripts/contigs/05_intersection.py"
 
 rule contigs_add_taxaname:
     input:
-        data     = "results/contigs/5.Intersection/{sample}_intersec.tsv",
-        taxonomy = config["taxonomy_megahit"]
+        data     = "results/contigs/5.Union/union_{sample}_contigs.tsv",
+        taxonomy = config["path"]["taxonomy_megahit"]
     output:
-        taxaname = "results/contigs/6.Final_Results/{sample}_annotated.tsv"
+        taxaname = "results/contigs/6.Annotated/annotated_{sample}_contigs.tsv"
     conda:   "envs/python_env.yaml"
     script:  "scripts/contigs/06_add_taxaname.py"
 
 # ==========================================================================
 # KEGG — 6 étapes
 # ==========================================================================
-rule kegg_extraction:
+rule run_kegg:
     input:
         raw_data = lambda w: KEGG_FILES[w.sample]
     output:
-        counts = "results/kegg/1.Raw_Counting/{sample}_counts.tsv"
-    params:
-        length_threshold = config["kegg"]["length_threshold"]
+        counts = "results/kegg/1.Counting/counted_{sample}_contigs.tsv"
     conda:   "envs/python_env.yaml"
     script:  "scripts/kegg/01_Kegg_extraction.py"
 
@@ -204,16 +224,12 @@ rule kegg_intersec_count:
         current_sample = "results/kegg/1.Raw_Counting/{sample}_counts.tsv"
     output:
         counts = "results/kegg/2.Filtered/{sample}_filtered.tsv"
-    params:
-        abundance_threshold = config["kegg"]["abundance_threshold"]
     conda:   "envs/python_env.yaml"
     script:  "scripts/kegg/02_Kegg_count_intersection.py"
 
 rule kegg_prepared_deseq2:
     input:
         data = "results/kegg/2.Filtered/{sample}_filtered.tsv"
-    output:
-        rpkm = "results/kegg/3.RPKM/{sample}_rpkm.tsv"
     conda:   "envs/python_env.yaml"
     script:  "scripts/kegg/03_Kegg_prepared_for_DESeq2.py"
 
@@ -223,8 +239,6 @@ rule kegg_standardization:
         current_sample = "results/kegg/3.RPKM/{sample}_rpkm.tsv"
     output:
         rpkm = "results/kegg/4.RPKM_Filtered/{sample}_rpkm_filtered.tsv"
-    params:
-        rpkm_threshold = config["kegg"]["rpkm_threshold"]
     conda:   "envs/python_env.yaml"
     script:  "scripts/kegg/021_Kegg_standardization.py"
 
@@ -241,7 +255,7 @@ rule kegg_standardization_agregation:
 rule kegg_merge_pathway_levels:
     input:
         data     = "results/kegg/5.Intersection/{sample}_intersec.tsv",
-        taxonomy = config["taxonomy_bakta"]["url"]
+        taxonomy = config["path"]["taxonomy_bakta"]["url"]
     output:
         taxaname = "results/kegg/6.Final_Results/{sample}_annotated.tsv"
     conda:   "envs/python_env.yaml"
@@ -252,39 +266,42 @@ rule kegg_merge_pathway_levels:
 # ==========================================================================
 
 PLOT_SOURCES = {
+    "reads":   expand("results/reads/2.Final_Results/{sample}_annotated.tsv",   sample=SAMPLES),
     "contigs": expand("results/contigs/6.Final_Results/{sample}_annotated.tsv", sample=SAMPLES),
-    "reads":   expand("results/reads/2.Final_Results/{sample}_annotated.tsv",   sample=SAMPLES)
+    "kegg": expand("results/contigs/6.Final_Results/{sample}_annotated.tsv", sample=SAMPLES)
 }
 
 PLOT_PARAMS = {
+    "reads":   {"value_col": "Reads", "label": "Read counts"},
     "contigs": {"value_col": "RPKM",  "label": "RPKM"},
-    "reads":   {"value_col": "Reads", "label": "Read counts"}
+    "kegg": {"value_col": "RPKM",  "label": "RPKM"}
 }
 
 rule plot_heatmap:
     input:
         rds = "Data/RDS/phyloseq.rds",
-        tsv = expand("results/contigs/6.Final_Results/{sample}_annotated.tsv", sample=SAMPLES)
+        data = expand("results/contigs/6.Annotated/annotated_{sample}_contigs.tsv", sample=SAMPLES)
     output:
         pdf     = "results/plots/heatmap/Heatmaps.pdf",
         parquet = "Data/Parquet/heatmap_data.parquet"
     params:
-        top_n        = config["plots"]["top_n"],
-        color_opt    = config["plots"]["color_opt"],
-        clust_method = config["plots"]["clust_method"]
+        shared       = config["plots"]["shared"],
+        top_n        = config["plots"]["heatmap"]["top_n"],
+        clust_method = config["plots"]["heatmap"]["clust_method"]
     conda:  "envs/r_env.yaml"
     script: "scripts/plots/heatmap.R"
 
 rule plot_barplot:
     input:
         tsv_dir  = expand("results/contigs/6.Final_Results/{sample}_annotated.tsv", sample=SAMPLES),
-        metadata = "config/metadata.xlsx"
+        metadata = config["path"]["metadata"]
     output:
         pdf     = "results/plots/barplot/Barplots.pdf",
         parquet = "Data/Parquet/genus_abundance.parquet"
     params:
-        top_n      = config["plots"]["top_n"],
-        taxon_rank = config["plots"]["target_rank"]
+        shared     = config["plots"]["shared"],
+        top_n      = config["plots"]["barplot"]["top_n"],
+        taxon_rank = config["plots"]["barplot"]["taxon_rank"]
     conda:  "envs/r_env.yaml"
     script: "scripts/plots/barplot.R"
 
@@ -295,8 +312,9 @@ rule plot_barplot_taxonomy:
         pdf     = "results/plots/barplot_taxonomy/{source}/Barplots.pdf",
         parquet = "Data/Parquet/barplot_taxonomy_{source}.parquet"
     params:
-        target_rank = config["plots"]["target_rank"],
-        top_n       = config["plots"]["top_n"],
+        shared      = config["plots"]["shared"],
+        top_n       = config["plots"]["barplot_taxonomy"]["top_n"],
+        taxon_rank  = config["plots"]["barplot_taxonomy"]["taxon_rank"],
         value_col   = lambda w: PLOT_PARAMS[w.source]["value_col"],
         label       = lambda w: PLOT_PARAMS[w.source]["label"]
     conda:  "envs/r_env.yaml"
@@ -318,48 +336,49 @@ rule plot_barplot_taxonomy:
 rule plot_pca:
     input:
         parquet  = expand("results/contigs/6.Final_Results/{sample}_annotated.tsv", sample=SAMPLES),
-        metadata = "config/metadata.xlsx",
-        physico  = "config/physico.xlsx"
+        metadata = config["path"]["metadata"],
+        physico  = config["path"]["physico_params"]
     output:
         pdf     = "results/plots/pca/ACP_results.pdf",
         parquet = "Data/Parquet/pca_results.parquet",
         csv     = "results/plots/pca/contributions.csv"
     params:
+        shared       = config["plots"]["shared"],
+        top_n        = config["plots"]["pca"]["top_n"],
+        point_size   = config["plots"]["pca"]["point_size"],
         dim_x        = config["plots"]["pca"]["dim_x"],
         dim_y        = config["plots"]["pca"]["dim_y"],
         physico_cols = config["plots"]["pca"]["physico_cols"],
-        n_top        = config["plots"]["pca"]["n_top"]
     conda:  "envs/r_env.yaml"
-    script: "scripts/plots/pca.R"
+    script: "../scripts/plots/pca.R"
 
 rule plot_physico:
     input:
-        excel = "config/physico.xlsx"
+        physico  = config["path"]["physico_params"]
     output:
         pdf     = "results/plots/physico/Physico_plots.pdf",
         parquet = "Data/Parquet/physico_data.parquet"
     conda:  "envs/r_env.yaml"
-    script: "scripts/plots/physico_params.R"
+    script: "../scripts/plots/physico_params.R"
 
 # ==========================================================================
 # DESEQ2 + PHYLOSEQ
 # ==========================================================================
-rule build_phyloseq:
+rule run_phyloseq:
     input:
-        csv_dir  = expand("results/reads/2.Final_Results/{sample}_annotated.tsv", sample=SAMPLES),
-        metadata = "config/metadata.xlsx"
+        files_dir  = expand("results/reads/3.Annotated/annotated_{sample}_reads.tsv", sample=SAMPLES),
+        metadata = config["path"]["metadata"]
     output:
-        rds     = "Data/RDS/phyloseq.rds",
-        parquet = "Data/Parquet/phyloseq_long.parquet"
-    params:
-        top_n = config["plots"]["top_n"]
+        rds_reads     = config["save"]["rds_reads"] + "phyloseq_reads.rds",
+        rds_contigs   = config["save"]["rds_contigs"] + "phyloseq_contigs.rds",
+        rds_kegg      = config["save"]["rds_kegg"] + "phyloseq_kegg.rds"
     conda:  "envs/r_env.yaml"
-    script: "scripts/plots/build_phyloseq.R"
+    script: "../scripts/plots/build_phyloseq.R"
 
 rule run_deseq2:
     input:
         tsv_dir  = expand("results/contigs/6.Final_Results/{sample}_annotated.tsv", sample=SAMPLES),
-        metadata = "config/metadata.xlsx"
+        metadata = config["path"]["metadata"]
     output:
         parquet_ref    = "results/deseq2/deseq2_digesteur_vs_TD1.parquet",
         parquet_date   = "results/deseq2/deseq2_date_timeline.parquet",
@@ -368,4 +387,4 @@ rule run_deseq2:
         rds_date       = "Data/RDS/diagdds_date.rds",
         rds_combos     = "Data/RDS/diagdds_digesteur_combos.rds"
     conda:  "envs/r_env.yaml"
-    script: "scripts/plots/deseq2.R"
+    script: "../scripts/plots/deseq2.R"

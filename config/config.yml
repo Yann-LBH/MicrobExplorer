@@ -5,7 +5,7 @@
 # Chemins des données
 path:
   data_raw: "data/raw/"
-  metadata: "data/metadata"
+  metadata: "data/metadata/metadata.tsv"
   taxonomy_ncbi: 
     zip_url: "https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip"
     dmp_name: "data/taxonomy_ncbi"
@@ -13,25 +13,33 @@ path:
   taxonomy_bakta: 
     local_path: "data/taxonomy_ncbi"
     url : "https://rest.kegg.jp/get/br:ko00001"
-  phychim_parameters: "data/phychim_parameters"
+  physico_params: "data/physico_parameters/parameters.xlxs"
   gff3: "data/gff3"
 
 extensions :
-  reads: ".kaijuNR"
-  contigs: ".tsv"
-  bakta: ".gff3"
+  reads: ".txt"       #".kaijuNR"
+  contigs: ".txt"       #".tsv"
+  bakta: ".txt"       #".gff3"
   plot: ".pdf"
 
+save:
+  rds_reads: "../results/"
+  rds_contigs: ""
+  rds_kegg: ""
+  parquet_reads: ""
+  parquet_contigs: ""
+  parquet_kegg: ""
 ################
 # Run parameters
 ################
 # --- Modules actifs ---
 run_taxonomy:     true
-run_reads:      true
-run_contigs:        true
-run_kegg:        true
+run_reads:        true
+run_contigs:      true
+run_kegg:         true
 run_plots:        true
 run_deseq2:       true
+run_phyloseq:     true
 run_physico:      true
 run_qc:           true
 
@@ -43,11 +51,13 @@ deseq_label: "Genus"  # Options possibles : "Contig_ID", "Phylum", "Genus", etc.
 # Reads parameters
 reads:
   count_threshold: 10
+  top_n: 19
+  noise: "bacteria"
 
 # Contigs parameters
 contigs:
   length_threshold: 3000
-  reads_threshold: 1000
+  abundance_threshold: 1000
   rpkm_threshold: 0.5
 
 # Kegg parameters
@@ -58,6 +68,7 @@ kegg:
 ####################
 # Graphic parameters
 ####################
+#utile ?
 taxonomic_levels:
   - "Phylum"
   - "Class"
@@ -79,16 +90,6 @@ plots:
     palette: "Turbo"
     width: 10
     height: 8
-# Plots
-
-  barplot:
-    top_n_taxa: 20
-
-  run_stackedbarplot:
-
-  pca:
-    color_by: "condition"
-    point_size: 2
     title:
       size: 12
     legend:
@@ -96,8 +97,31 @@ plots:
     axes:
       size: 10
 
+# Plots
+  barplot:
+    top_n: 19
+    taxon_rank: "Class"
+
+  barplot_taxonomy:
+    top_n: 19
+    taxon_rank: "Class"
+
+  stackedbarplot:
+    top_n: 19
+    taxon_rank: "Class"
+
+  pca:
+    color_by: "condition"
+    point_size: 2
+    top_n: 10
+    dim_x: 1
+    dim_y: 2
+    physico_cols: "pH"
+
   heatmap:
-    cluster_rows: True
+    top_n: 50
+    clust_method: brad
+    #cluster_rows: True
 
   run_volcano:
     pvalue_threshold : 0.05

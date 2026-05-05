@@ -1,8 +1,19 @@
 import os
 
 # --- CONFIGURATION (En haut pour être facilement modifiable) ---
-ROOT_FOLDER = "Data"
-EXIT_FOLDER = "1.Counted_kaiju"
+#ROOT_FOLDER = "Data"
+#EXIT_FOLDER = "1.Counted_kaiju"
+
+try:
+    # Attempt to retrieve paths from Snakemake
+    zip_path = snakemake.output.zip
+    csv_path = snakemake.output.csv
+    target_dmp = snakemake.params.dmp_name
+except NameError:
+    # Fallback paths for manual execution or debugging
+    zip_path = "data/taxonomy/new_taxdump.zip"
+    csv_path = "data/taxonomy_ncbi/mapping_taxons.csv"
+    target_dmp = "rankedlineage.dmp"
 
 def analyser_kaiju(enter_path, exit_path):
     counter = {}
