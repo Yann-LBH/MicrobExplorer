@@ -15,7 +15,7 @@ library(arrow)
 
 # Snakemake variables
 input_file  <- snakemake[["input"]][["excel"]]
-output_pdf_dir <- snakemake[["input"]][["pdf_dir"]]
+output_pdf <- snakemake[["input"]][["pdf_dir"]]
 output_parquet <- snakemake[["input"]][["parquet"]]
 
 # ==========================================================================
@@ -132,7 +132,7 @@ walk(all_conditions, function(cond) {
   if (length(plot_list) > 0) {
     # PDF generation
     safe_cond <- gsub("[^[:alnum:]]", "_", cond)
-    pdf_path <- file.path(output_pdf_dir, paste0("Rapport_", safe_cond, ".pdf"))
+    pdf_path <- file.path(output_pdf, paste0("Rapport_", safe_cond, ".pdf"))
     
     pdf(pdf_path, width = 11, height = 8.5)
     

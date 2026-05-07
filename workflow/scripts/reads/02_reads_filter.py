@@ -1,15 +1,16 @@
-import os
-import shutil
+################################################################################
+# Project : "MicrobExplorer"
+# Script: "Filter for reads"
+# Author: "Yann Le Bihan"
+# Date: "2025-12-01"
+# Link : https://github.com/Yann-LBH/MicrobExplorer
+################################################################################
 
-# --- CONFIGURATION (En haut pour être facilement modifiable) ---
-ROOT_FOLDER = "1.Counted_kaiju"
-EXIT_FOLDER = "2.Reads_trimmed"
-    
-def trimming_kaiju(enter_path, exit_path):
+def trimming_kaiju(path_in, path_out):
     
     try:
-        with open(enter_path, 'r', encoding='utf-8') as f_in, \
-             open(exit_path, 'w', encoding='utf-8') as f_out:
+        with open(path_in, 'r', encoding='utf-8') as f_in, \
+             open(path_out, 'w', encoding='utf-8') as f_out:
 
             #garde les reads >= 100
             for line in f_in:
@@ -35,27 +36,14 @@ def trimming_kaiju(enter_path, exit_path):
 
         return True
     except Exception as e:
-            print(f"❌ Erreur sur le fichier {enter_path}: {e}")
+            print(f"❌ Erreur sur le fichier {path_in}: {e}")
             return False
     
-# --- EXÉCUTION (À la fin du script) ---
+# ==========================================================================
 if __name__ == "__main__":
-    # Supprime physiquement le fichier avant de le recréer
-    if os.path.exists(EXIT_FOLDER):
-        shutil.rmtree(EXIT_FOLDER)
-        os.makedirs(EXIT_FOLDER)
-        print(f"Mise à jour du dossier {EXIT_FOLDER}.")
 
+    path_in        = snakemake.input.data
+    path_out     = snakemake.output.filtered
 
-    # Parcours des filess
-    for files in os.listdir(ROOT_FOLDER):
-        if files.endswith(".txt"):
-            path_in = os.path.join(ROOT_FOLDER, files)
-            name_exit = f"trimmed_reads_{files}"
-            path_out = os.path.join(EXIT_FOLDER, name_exit)
-            
-            print(f"Traitement de {files} en cours...")
-            succes = trimming_kaiju(path_in, path_out)
-            
-            if succes:
-                print(f"✅ Terminé : {name_exit}")
+    print(f"✓ Filtering step passed -> {path_out}")
+    

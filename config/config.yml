@@ -51,8 +51,20 @@ deseq_label: "Genus"  # Options possibles : "Contig_ID", "Phylum", "Genus", etc.
 # Reads parameters
 reads:
   count_threshold: 10
-  top_n: 19
-  noise: "bacteria"
+  top_n: 50
+  noise: 
+    - "root"
+    - "cellular organisms"
+    - "unclassified"
+    - "Bacteriophage sp."
+    - "Duplodnaviria"
+    - "environmental Halophage eHP-30"
+    - "Methanobacterium virus PhiF1"
+    - "Prokaryotic dsDNA virus sp."
+    - "Riboviria"
+    - "uncultured virus"
+    - "Virus NIOZ-UU157"
+    - "Viruses"
 
 # Contigs parameters
 contigs:

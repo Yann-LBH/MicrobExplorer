@@ -123,29 +123,29 @@ rule run_reads:
     input:
         raw_data = lambda w: READS_FILES[w.sample]
     output:
-        counts = "results/reads/1.Counted/counted_{sample}_reads.tsv"
+        counted = "results/treatment/reads/1.Counted/counted_{sample}_reads.tsv"
+    conda:   "envs/python_env.yaml"
+    script:  "../scripts/reads/01_Reads_counting_raw.py"
+
+rule reads_filter:
+    input:
+        data     = "results/treatment/reads/1.Counted/counted_{sample}_reads.tsv"
+    output:
+        filtered = "results/treatment/reads/2.Filtered/filtered_{sample}_reads.tsv"
+    conda:   "envs/python_env.yaml"
+    script:  "../scripts/reads/02_Reads_filter.py"
+
+rule reads_add_taxaname:
+    input:
+        data     = "results/treatment/reads/2.Filtered/filtered_{sample}_reads.tsv",
+        taxonomy = "data/taxonomy_ncbi/mapping_taxons.csv"
+    output:
+        taxaname = "results/treatment/reads/3.Annotated/annotated_{sample}_reads.tsv"
     params:
         top_n = config["reads"]["top_n"],
         noise = config["reads"]["noise"]
     conda:   "envs/python_env.yaml"
-    script:  "../scripts/reads/01_reads_counting_raw.py"
-
-rule reads_filter:
-    input:
-        data     = "results/reads/1.Counted/counted_{sample}_reads.tsv"
-    output:
-        filters = "results/reads/2.Filtered/filtered_{sample}_reads.tsv"
-    conda:   "envs/python_env.yaml"
-    script:  "../scripts/reads/02_reads_filter.py"
-
-rule reads_add_taxaname:
-    input:
-        data     = "results/reads/2.Filtered/filtered_{sample}_reads.tsv",
-        taxonomy = "data/taxonomy_ncbi/mapping_taxons.csv"
-    output:
-        taxaname = "results/reads/3.Annotated/annotated_{sample}_reads.tsv"
-    conda:   "envs/python_env.yaml"
-    script:  "../scripts/reads/03_replace_TaxaID_by_Phylo.py"
+    script:  "../scripts/reads/03_Reads_add_taxaname.py"
 
 # ==========================================================================
 # CONTIGS — 6 étapes
@@ -154,7 +154,7 @@ rule run_contigs:
     input:
         raw_data = lambda w: CONTIGS_FILES[w.sample]
     output:
-        counts = "results/contigs/1.Counted/counted_{sample}_reads.tsv"
+        counted = "results/treatment/contigs/1.Counted/counted_{sample}_contigs.tsv"
     params:
         length_threshold = config["contigs"]["length_threshold"]
     conda:   "envs/python_env.yaml"
@@ -162,10 +162,10 @@ rule run_contigs:
 
 rule contigs_filter:
     input:
-        data    = expand("results/contigs/1.Counting/counted_{sample}_contigs.tsv", sample=SAMPLES)
+        data    = expand("results/treatment/contigs/1.Counting/counted_{sample}_contigs.tsv", sample=SAMPLES)
         #current_sample = "results/contigs/1.Counting/counted_{sample}_contigs.tsv"
     output:
-        filters = "results/contigs/2.Filtered/filtered_{sample}_contigs.tsv"
+        filtered = "results/treatment/contigs/2.Filtered/filtered_{sample}_contigs.tsv"
     params:
         abundance_threshold = config["contigs"]["abundance_threshold"]
     conda:   "envs/python_env.yaml"
@@ -173,17 +173,17 @@ rule contigs_filter:
 
 rule contigs_rpkm:
     input:
-        data = "results/contigs/2.Filtered/filtered_{sample}_contigs.tsv"
+        data = "results/treatment/contigs/2.Filtered/filtered_{sample}_contigs.tsv"
     output:
-        rpkm = "results/contigs/3.RPKM/rpkm_{sample}_contigs.tsv"
+        rpkm = "results/treatment/contigs/3.RPKM/rpkm_{sample}_contigs.tsv"
     conda:   "envs/python_env.yaml"
     script:  "scripts/contigs/03_Contigs_RPKM.py"
 
 rule contigs_rpkm_filter:
     input:
-        data = expand("results/contigs/3.RPKM/rpkm_{sample}_contigs.tsv", sample=SAMPLES),
+        data = expand("results/treatment/contigs/3.RPKM/rpkm_{sample}_contigs.tsv", sample=SAMPLES),
     output:
-        rpkm_filters = "results/contigs/4.RPKM_Filtered/rpkm_filtered_{sample}_contigs.tsv"
+        rpkm_filtered = "results/treatment/contigs/4.RPKM_Filtered/rpkm_filtered_{sample}_contigs.tsv"
     params:
         rpkm_threshold = config["contigs"]["rpkm_threshold"]
     conda:   "envs/python_env.yaml"
@@ -191,21 +191,21 @@ rule contigs_rpkm_filter:
 
 rule contigs_union:
     input:
-        abund  = "results/contigs/2.Filtered/filtered_{sample}_contigs.tsv",
-        rpkm   = "results/contigs/4.RPKM_Filtered/rpkm_filtered_{sample}contigs.tsv"
+        abundance  = "results/treatment/contigs/2.Filtered/filtered_{sample}_contigs.tsv",
+        rpkm_filtered   = "results/treatment/contigs/4.RPKM_Filtered/rpkm_filtered_{sample}contigs.tsv"
     output:
-        union = "results/contigs/5.Intersection/union_{sample}_contigs.tsv"
+        union = "results/treatment/contigs/5.Intersection/union_{sample}_contigs.tsv"
     conda:   "envs/python_env.yaml"
     script:  "scripts/contigs/05_intersection.py"
 
 rule contigs_add_taxaname:
     input:
-        data     = "results/contigs/5.Union/union_{sample}_contigs.tsv",
+        data     = "results/treatment/contigs/5.Union/union_{sample}_contigs.tsv",
         taxonomy = config["path"]["taxonomy_megahit"]
     output:
-        taxaname = "results/contigs/6.Annotated/annotated_{sample}_contigs.tsv"
+        taxaname = "results/treatment/contigs/6.Annotated/annotated_{sample}_contigs.tsv"
     conda:   "envs/python_env.yaml"
-    script:  "scripts/contigs/06_add_taxaname.py"
+    script:  "../scripts/contigs/06_add_taxaname.py"
 
 # ==========================================================================
 # KEGG — 6 étapes
@@ -214,52 +214,52 @@ rule run_kegg:
     input:
         raw_data = lambda w: KEGG_FILES[w.sample]
     output:
-        counts = "results/kegg/1.Counting/counted_{sample}_contigs.tsv"
+        extracted = "results/treatment/kegg/1.Extracted/extracted_{sample}_kegg.tsv"
     conda:   "envs/python_env.yaml"
-    script:  "scripts/kegg/01_Kegg_extraction.py"
+    script:  "../scripts/kegg/01_Kegg_extraction.py"
 
 rule kegg_intersec_count:
     input:
-        all_samples    = expand("results/kegg/1.Raw_Counting/{sample}_counts.tsv", sample=SAMPLES),
-        current_sample = "results/kegg/1.Raw_Counting/{sample}_counts.tsv"
+        data    = "results/treatment/kegg/1.Extracted/extracted_{sample}_kegg.tsv",
+        counted = "results/treatment/contigs/1.Counted/counted_{sample}_contigs.tsv" #use contigs counts
     output:
-        counts = "results/kegg/2.Filtered/{sample}_filtered.tsv"
+        intersec = "results/treatment/kegg/2.Intersected/intersected_{sample}_kegg.tsv"
     conda:   "envs/python_env.yaml"
-    script:  "scripts/kegg/02_Kegg_count_intersection.py"
+    script:  "../scripts/kegg/02_Kegg_count_intersection.py"
 
 rule kegg_prepared_deseq2:
     input:
-        data = "results/kegg/2.Filtered/{sample}_filtered.tsv"
+        data = "results/treatment/kegg/2.Intersected/intersected_{sample}_kegg.tsv"
+    output:
+        deseq2 = "results/treatment/kegg/3.Deseq2/deseq2_{sample}_kegg.tsv"
     conda:   "envs/python_env.yaml"
-    script:  "scripts/kegg/03_Kegg_prepared_for_DESeq2.py"
+    script:  "../scripts/kegg/03_Kegg_prepared_for_DESeq2.py"
 
 rule kegg_standardization:
     input:
-        data           = expand("results/kegg/3.RPKM/{sample}_rpkm.tsv", sample=SAMPLES),
-        current_sample = "results/kegg/3.RPKM/{sample}_rpkm.tsv"
+        data           = "results/treatment/kegg/2.Intersected/intersected_{sample}_kegg.tsv"
+        current_sample = "results/treatment/kegg/2.Intersected/intersected_{sample}_kegg.tsv"
     output:
-        rpkm = "results/kegg/4.RPKM_Filtered/{sample}_rpkm_filtered.tsv"
+        stand = "results/treatment/kegg/021.Standardized/standardized_{sample}_kegg.tsv"
     conda:   "envs/python_env.yaml"
-    script:  "scripts/kegg/021_Kegg_standardization.py"
+    script:  "../scripts/kegg/021_Kegg_standardization.py"
 
 rule kegg_standardization_agregation:
     input:
-        abund  = "results/kegg/2.Filtered/{sample}_filtered.tsv",
-        rpkm   = "results/kegg/4.RPKM_Filtered/{sample}_rpkm_filtered.tsv",
-        source = "results/kegg/3.RPKM/{sample}_rpkm.tsv"
+        data  = "results/treatment/kegg/021.Standardized/standardized_{sample}_kegg.tsv"
     output:
-        out = "results/kegg/5.Intersection/{sample}_intersec.tsv"
+        agreg = "results/treatment/kegg/022.Agregated/stand_aggreg_{sample}_kegg.tsv"
     conda:   "envs/python_env.yaml"
-    script:  "scripts/kegg/022_Kegg_standardization_agregation.py"
+    script:  "../scripts/kegg/022_Kegg_standardization_agregation.py"
 
 rule kegg_merge_pathway_levels:
     input:
-        data     = "results/kegg/5.Intersection/{sample}_intersec.tsv",
+        data     = "results/treatment/kegg/022.Aggregated/stand_aggreg_{sample}_kegg.tsv",
         taxonomy = config["path"]["taxonomy_bakta"]["url"]
     output:
-        taxaname = "results/kegg/6.Final_Results/{sample}_annotated.tsv"
+        taxaname = "results/treatment/kegg/023.Annotated/annotated_{sample}_kegg.tsv"
     conda:   "envs/python_env.yaml"
-    script:  "scripts/kegg/023_Kegg_merge_pathway_levels.py"
+    script:  "../scripts/kegg/023_Kegg_merge_pathway_levels.py"
 
 # ==========================================================================
 # PLOTS R
@@ -356,8 +356,8 @@ rule plot_physico:
     input:
         physico  = config["path"]["physico_params"]
     output:
-        pdf     = "results/plots/physico/Physico_plots.pdf",
-        parquet = "Data/Parquet/physico_data.parquet"
+        pdf     = "results/plots/physico/physico_plots.pdf",
+        parquet = "results/parquet/physico_data.parquet"
     conda:  "envs/r_env.yaml"
     script: "../scripts/plots/physico_params.R"
 
