@@ -8,11 +8,12 @@ path:
   metadata: "data/metadata/metadata.tsv"
   taxonomy_ncbi: 
     zip_url: "https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip"
-    dmp_name: "data/taxonomy_ncbi"
-  taxonomy_megahit: "data/taxonomy_megahit/taxname.txt"
-  taxonomy_bakta: 
-    local_path: "data/taxonomy_ncbi"
+    dmp_name: "data/taxonomy_ncbi/new_taxdump.zip/rankedlineage.dmp"
+    local_path: "data/taxonomy_ncbi/taxaname.csv"
+  taxonomy_megahit: "data/taxonomy_megahit/taxaname.txt"
+  pathway_bakta: 
     url : "https://rest.kegg.jp/get/br:ko00001"
+    local_path: "data/pathway_bakta/pathway.tsv"
   physico_params: "data/physico_parameters/parameters.xlxs"
   gff3: "data/gff3"
 

@@ -37,9 +37,9 @@ def run_annotation(path_in: str, path_out: str,
 
 # --- Exécution ---
 if __name__ == "__main__":
-    path_in  = snakemake.input.data
-    path_out = snakemake.output.taxaname
-    taxonomy    = snakemake.output.taxonomy
+    path_in     = snakemake.input.data
+    path_out    = snakemake.output.taxaname
+    taxonomy    = snakemake.input.taxonomy
 
     taxonomy = load_taxonomy(snakemake.input.taxonomy)
 

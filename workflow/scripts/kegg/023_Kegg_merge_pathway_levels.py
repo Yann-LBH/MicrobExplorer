@@ -15,9 +15,9 @@ FILL_VALUES = {
     "weight":  0
 }
 
-def load_reference(taxonomy: str) -> pd.DataFrame:
+def load_reference(pathway: str) -> pd.DataFrame:
     """Charge et prépare la table de référence KEGG."""
-    ref = pd.read_csv(taxonomy, sep="\t")
+    ref = pd.read_csv(pathway, sep="\t")
     ref.columns = ref.columns.str.strip()
     ref["ko"] = ref["ko"].astype(str).str.replace("ko:", "", regex=False)
     ref[["level_1", "level_2", "level_3"]] = ref[["level_1", "level_2", "level_3"]].fillna("Unassigned")
@@ -51,8 +51,8 @@ if __name__ == "__main__":
 
     path_in     = snakemake.input.data
     path_out    = snakemake.output.taxname
-    taxonomy    = snakemake.input.taxonomy
+    pathway     = snakemake.input.pathway
 
-    ref = load_reference(taxonomy)
+    ref = load_reference(pathway)
     n   = annotate_with_hierarchy(path_in, ref, path_out)
     print(f"✓ {n} lignes annotées -> {path_out}")

@@ -28,7 +28,7 @@ def agreger_par_ko(path_in: str, path_out: str) -> int:
 if __name__ == "__main__":
 
     path_in = snakemake.input.data
-    path_out = snakemake.input.agreg
+    path_out = snakemake.output.agreg
 
     n = agreger_par_ko(path_in, path_out)
     print(f"✓ {n} KO uniques -> {path_out}")

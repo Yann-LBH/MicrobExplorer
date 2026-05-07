@@ -23,7 +23,6 @@ rds_out     <- snakemake[["output"]][["rds"]]         # "RDS_obj/processed_plot_
 # Thresholds from config
 padj_threshold <- snakemake@config[["padj"]] %||% 0.05
 lfc_thresh  <- snakemake@config[["lfc"]]  %||% 0
-ids_over <- res[padj <= padj_threshold & lfc <=log2FoldChange, Contig_ID] 
 
 # ==========================================================================
 # 1. Data Preparation
@@ -122,6 +121,8 @@ for (nom_comp in names(results_list)) {
   # Filter sig KOs based on config padj
   ids_over  <- res[padj <= padj_thresh & log2FoldChange > 0, KO_Number]
   ids_under <- res[padj <= padj_thresh & log2FoldChange < 0, KO_Number]
+  
+  #ids_over <- res[padj <= padj_threshold & lfc <=log2FoldChange, Contig_ID] 
   
   if(length(ids_over) > 0) {
     print(generate_plot(df_base, ids_over, "Over-represented", nom_comp, t_ref, t_act, grp_col))
