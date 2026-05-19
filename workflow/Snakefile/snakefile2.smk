@@ -284,31 +284,31 @@ rule kegg_merge_pathway_levels:
 # PLOTS R
 # ==========================================================================
 
-# PLOT_SOURCES = {
-#     "reads":   expand("results/reads/2.Final_Results/{sample}_annotated.tsv",   sample=SAMPLES),
-#     "contigs": expand("results/contigs/6.Final_Results/{sample}_annotated.tsv", sample=SAMPLES),
-#     "kegg": expand("results/contigs/6.Final_Results/{sample}_annotated.tsv", sample=SAMPLES)
-# }
+PLOT_SOURCES = {
+    "reads":   expand("results/reads/2.Final_Results/{sample}_annotated.tsv",   sample=SAMPLES),
+    "contigs": expand("results/contigs/6.Final_Results/{sample}_annotated.tsv", sample=SAMPLES),
+    "kegg": expand("results/contigs/6.Final_Results/{sample}_annotated.tsv", sample=SAMPLES)
+}
 
-# PLOT_PARAMS = {
-#     "reads":   {"value_col": "Reads", "label": "Read counts"},
-#     "contigs": {"value_col": "RPKM",  "label": "RPKM"},
-#     "kegg": {"value_col": "RPKM",  "label": "RPKM"}
-# }
+PLOT_PARAMS = {
+    "reads":   {"value_col": "Reads", "label": "Read counts"},
+    "contigs": {"value_col": "RPKM",  "label": "RPKM"},
+    "kegg": {"value_col": "RPKM",  "label": "RPKM"}
+}
 
-# rule plot_heatmap:
-#     input:
-#         rds = "Data/RDS/phyloseq.rds",
-#         data = expand("results/contigs/6.Annotated/annotated_{sample}_contigs.tsv", sample=SAMPLES)
-#     output:
-#         pdf     = "results/plots/heatmap/Heatmaps.pdf",
-#         parquet = "Data/Parquet/heatmap_data.parquet"
-#     params:
-#         shared       = config["plots"]["shared"],
-#         top_n        = config["plots"]["heatmap"]["top_n"],
-#         clust_method = config["plots"]["heatmap"]["clust_method"]
-#     conda:  "envs/r_env.yaml"
-#     script: "scripts/plots/heatmap.R"
+rule plot_heatmap:
+    input:
+        rds = "Data/RDS/phyloseq.rds",
+        data = expand("results/contigs/6.Annotated/annotated_{sample}_contigs.tsv", sample=SAMPLES)
+    output:
+        pdf     = "results/plots/heatmap/Heatmaps.pdf",
+        parquet = "Data/Parquet/heatmap_data.parquet"
+    params:
+        shared       = config["plots"]["shared"],
+        top_n        = config["plots"]["heatmap"]["top_n"],
+        clust_method = config["plots"]["heatmap"]["clust_method"]
+    conda:  "envs/r_env.yaml"
+    script: "scripts/plots/heatmap.R"
 
 # rule plot_barplot:
 #     input:
