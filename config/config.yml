@@ -5,7 +5,7 @@
 # Chemins des données
 path:
   data_raw: "data/raw/"
-  metadata: "data/metadata/metadata.tsv"
+  metadata: "data/metadata/metadata.csv"
   taxonomy_ncbi: 
     zip_url: "https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip"
     dmp_name: "data/taxonomy_ncbi/new_taxdump.zip/rankedlineage.dmp"
@@ -24,12 +24,12 @@ extensions :
   plot: ".pdf"
 
 save:
-  rds_reads: "../results/"
-  rds_contigs: ""
-  rds_kegg: ""
-  parquet_reads: ""
-  parquet_contigs: ""
-  parquet_kegg: ""
+  rds_reads: "../results/rds/reads/"
+  rds_contigs: "../results/rds/contigs/"
+  rds_kegg: "../results/rds/kegg/"
+  parquet_reads: "../results/parquet/kegg/"
+  parquet_contigs: "../results/parquet/kegg/"
+  parquet_kegg: "../results/parquet/kegg/"
 ################
 # Run parameters
 ################
@@ -112,10 +112,6 @@ plots:
 
 # Plots
   barplot:
-    top_n: 19
-    taxon_rank: "Class"
-
-  barplot_taxonomy:
     top_n: 19
     taxon_rank: "Class"
 

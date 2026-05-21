@@ -19,9 +19,9 @@ rds_files      <- snakemake@input[["rds_files"]]   # List of RDS files
 parquet_output <- snakemake@output[["parquet"]]   # Single parquet file path
 pdf_output     <- snakemake@output[["pdf"]]       # Single PDF file path
 
-# Thresholds from config
-padj_thresh <- snakemake@config[["padj"]] %||% 0.05
-lfc_thresh  <- snakemake@config[["lfc"]]  %||% 0
+# Thresholds from rule params
+padj_thresh <- snakemake@params[["padj"]] %||% 0.05
+lfc_thresh  <- snakemake@params[["lfc"]]  %||% 0
 
 # ==========================================================================
 # Processing & Plotting

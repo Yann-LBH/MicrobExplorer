@@ -14,7 +14,8 @@ library(readr)  # uniquement pour read_tsv — fread gère aussi les TSV
 # ==========================================================================
 # Configuration (variables Snakemake)
 # ==========================================================================
-data_path     <- snakemake[["input"]][["data_path"]]    # "Statistics/3_Deseq2"
+data_contigs_path     <- snakemake[["input"]][["contigs_dir"]]    # "Statistics/3_Deseq2"
+data_kegg_path     <- snakemake[["input"]][["kegg_dir"]] 
 saving_folder <- snakemake[["output"]][["rds_dir"]]     # "RDS_obj/"
 parquet_dir   <- snakemake[["parameter"]][["parquet_dir"]] # "Data/Parquet/deseq2/"
 
