@@ -3,7 +3,7 @@
 # ==========================================================================
 
 # Chemins des données
-path:
+input_path:
   data_raw: "data/raw/"
   metadata: "data/metadata/metadata.csv"
   taxonomy_ncbi: 
@@ -17,19 +17,18 @@ path:
   physico_params: "data/physico_parameters/parameters.xlxs"
   gff3: "data/gff3"
 
+output_path:
+  treatment: "../results/treatment/"
+  plots: "../results/plots/"
+  rds: "../results/rds/"
+  parquet: "../results/parquet/"
+
 extensions :
   reads: ".txt"       #".kaijuNR"
   contigs: ".txt"       #".tsv"
   bakta: ".txt"       #".gff3"
   plot: ".pdf"
 
-save:
-  rds_reads: "../results/rds/reads/"
-  rds_contigs: "../results/rds/contigs/"
-  rds_kegg: "../results/rds/kegg/"
-  parquet_reads: "../results/parquet/kegg/"
-  parquet_contigs: "../results/parquet/kegg/"
-  parquet_kegg: "../results/parquet/kegg/"
 ################
 # Run parameters
 ################
