@@ -49,6 +49,8 @@ def get_targets():
     # --- Plots ---
     if config["run_plots"]:
         targets += [
+            *expand(config["output_path"][plots])
+            source=[datatypes][heatmap]
             ["output_path"]["plots"] + "heatmap/Heatmap_contigs.pdf",
             # Le '*' extrait les éléments de la liste expand() directement ici
             *expand(config["output_path"]["plots"] + "stackedbarplot/{source}/Stackedbarplot_deseq2_{source}.pdf",
