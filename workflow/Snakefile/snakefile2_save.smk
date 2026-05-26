@@ -1,70 +1,17 @@
 import pandas as pd
-from pathlib import Path
+from input_pathlib import input_path
 
 configfile: "config/config.yaml"
 
 # ==========================================================================
-#   DICTIONARIES
+# Échantillons
 # ==========================================================================
 
-# Échantillons
 data           = pd.read_csv("config/samples.tsv", sep="\t")
 SAMPLES        = data["sample"].tolist()
 READS_FILES    = dict(zip(data["sample"], data["reads_file"]))
 CONTIGS_FILES  = dict(zip(data["sample"], data["contigs_file"]))
 KEGG_FILES     = dict(zip(data["sample"], data["kegg_file"]))
-
-MODE_TO_FILENAME = {
-            "pathway":   "pathway_abundance",
-            "organisms": "organisms_abundance",
-            "taxonomy":  "taxonomy",
-}
-# Inverse pour récupérer le mode depuis le wildcard filename
-FILENAME_TO_MODE = {v: k for k, v in MODE_TO_FILENAME.items()}
-
-READS_TREATMENT = config["output_path"]["treatment"] + "reads/"
-CONTIGS_TREATMENT = config["output_path"]["treatment"] + "contigs/"
-KEGG_TREATMENT = config["output_path"]["treatment"] + "kegg/"
-
-TREATMENT_SOURCES = {
-    "reads":        expand(READS_TREATMENT + "3.Annotated/annotated_{sample}_reads.tsv",   sample=SAMPLES),
-    "contigs":      expand(CONTIGS_TREATMENT + "6.Annotated/annotated_{sample}_contigs.tsv", sample=SAMPLES),
-    "kegg":         expand(KEGG_TREATMENT + "023.Annotated/annotated_{sample}_kegg.tsv", sample=SAMPLES),
-    "kegg_deseq2":  expand(KEGG_TREATMENT + "3.Deseq2/deseq2_{sample}_kegg.tsv", sample=SAMPLES)
-}
-
-PLOT_PARAMS = {
-    "reads":    {"value_col": "Reads", "label": "Read counts"},
-    "contigs":  {"value_col": "RPKM",  "label": "RPKM"},
-    "kegg":     {"value_col": "RPKM",  "label": "RPKM"}
-}
-# ==========================================================================
-# Helpers
-# ==========================================================================
-def reads(pattern, sources_key):
-    if not config["run_reads"]:
-        return []
-    return expand(pattern, source=config["datatypes"][sources_key])
-
-def contigs(pattern, sources_key):
-    if not config["run_contigs"]:
-        return []
-    return expand(pattern, source=config["datatypes"][sources_key])
-
-def kegg(pattern, sources_key):
-    if not config["run_kegg"]:
-        return []
-    return expand(pattern, source=config["datatypes"][sources_key])
-
-def phyloseq_plots(pattern, sources_key):
-    if not config["run_phyloseq"]:
-        return []
-    return expand(pattern, source=config["datatypes"][sources_key])
-
-def deseq2_plots(pattern, sources_key):
-    if not config["run_deseq2"]:
-        return []
-    return expand(pattern, source=config["datatypes"][sources_key])
 
 # ==========================================================================
 # Cibles finales
@@ -72,12 +19,12 @@ def deseq2_plots(pattern, sources_key):
 def get_targets():
     targets = []
 
-# --- Taxonomy ---
+    # --- Taxonomy ---
     if config["run_taxonomy"]:
-        targets.extend([
-            config["input_path"]["taxonomy_ncbi"]["local_path"], 
-            config["input_path"]["pathway_bakta"]["local_path"]
-        ])
+        targets +=(
+            config["input_path"]["taxonomy_ncbi"]["local_input_path"], 
+            config["input_path"]["input_pathway_bakta"]["local_input_path"]
+        ) #####
 
     # --- Reads ---
     if config["run_reads"]:
@@ -99,49 +46,63 @@ def get_targets():
             sample=SAMPLES
         ))
 
+    MODE_TO_FILENAME = {
+        "pathway":   "pathway_abundance",
+        "organisms": "organisms_abundance",
+        "taxonomy":  "taxonomy",
+    }
+    
     # --- Plots ---
     if config["run_plots"]:
-        # Heatmap
-        targets += expand(
-            config["output_path"]["plots"] + "heatmap/Heatmap_{source}.pdf",
-            source=config["datatypes"]["heatmap"]
-        )
+        targets += [
+            # Heatmap
+            *expand(config["output_path"]["plots"] + "heatmap/Heatmap_{source}.pdf",
+                source=config["datatypes"]["heatmap"]),
             
-        # Stackedbarplots standard
-        for mode, sources in config["datatypes"]["stackedbarplot"]["standard"].items():
+            # Stackedbarplots
+            *expand(config["output_path"]["plots"] + "stackedbarplot/{source}/Stackedbarplot_deseq2_{source}.pdf",
+                source=config["datatypes"]["stackedbarplot"]["deseq2"]),
+                
+            *expand(config["output_path"]["plots"] + "stackedbarplot/{source}/Stackedbarplot_organisms_abundance_{source}.pdf",
+                source=config["datatypes"]["stackedbarplot"]["organisms"]),
+                
+            *expand(config["output_path"]["plots"] + "stackedbarplot/{source}/Stackedbarplot_input_pathway_abundance_{source}.pdf",
+                source=config["datatypes"]["stackedbarplot"]["pathway"]),
+                
+            *expand(config["output_path"]["plots"] + "stackedbarplot/{source}/Stackedbarplot_taxonomy_{source}.pdf",
+                source=config["datatypes"]["stackedbarplot"]["taxonomy"]),
+            for cle, sources in config["datatypes"]["stackedbarplot"].items():
+        
+            # Pour pathway, le nom du fichier est un peu différent ("input_pathway_abundance")
+            # On ajuste le nom du fichier dynamiquement selon la clé
+            if cle == "pathway":
+                nom_fichier = "input_pathway_abundance"
+            elif cle == "organisms":
+                nom_fichier = "organisms_abundance"
+            else:
+                nom_fichier = cle  # Sera "deseq2" ou "taxonomy"
+                
+            # On ajoute dynamiquement les cibles générées par expand
             targets += expand(
-                config["output_path"]["plots"] + f"stackedbarplot/{mode}/Stackedbarplot_{MODE_TO_FILENAME[mode]}_{{source}}.pdf",
+                config["output_path"]["plots"] + f"stackedbarplot/{{source}}/Stackedbarplot_{nom_fichier}_{{source}}.pdf",
                 source=sources
             )
+            
+            # Volcano
+            *expand(config["output_path"]["plots"] + "volcano/{source}/Volcano_deseq2_{source}.pdf",
+                source=config["datatypes"]["volcano"])
+        ]
 
-        # Stackedbarplots DESeq2
-        targets += expand(
-            config["output_path"]["plots"] + "stackedbarplot/deseq2/Stackedbarplot_deseq2_{source}.pdf",
-            source=config["datatypes"]["stackedbarplot"]["deseq2"]
-        )
-
-        # Volcano
-        targets += expand(
-            config["output_path"]["plots"] + "volcano/{source}/Volcano_deseq2_{source}.pdf",
-            source=config["datatypes"]["volcano"]
-        )
-
-# Use with helper
-        #targets += deseq2_plots(
-       #     config["output_path"]["plots"] + "stackedbarplot/deseq2/Stackedbarplot_deseq2_{source}.pdf",
-       #     "deseq2"
-       # )
-       # targets += deseq2_plots(
-        #    config["output_path"]["plots"] + "volcano/{source}/Volcano_deseq2_{source}.pdf",
-        #    "volcano"
-        #)
-
-    # --- Phyloseq ---
     if config["run_phyloseq"]:
         datatypes = ["reads", "contigs", "kegg"]
 
         targets += [
             config["output_path"]["rds"] + f"{d}/phyloseq_{d}.rds"
+            for d in datatypes
+        ]
+
+        targets += [
+            config["output_path"]["parquet"] + f"{d}/phyloseq_{d}.parquet"
             for d in datatypes
         ]
 
@@ -181,7 +142,7 @@ rule download_taxonomy:
     output:
         zip      = temp("data/taxonomy/new_taxdump.zip"),
         dmp_name = config["input_path"]["taxonomy_ncbi"]["dmp_name"],
-        taxonomy = config["input_path"]["taxonomy_ncbi"]["local_path"]
+        taxonomy = config["input_path"]["taxonomy_ncbi"]["local_input_path"]
     params:
         url      = config["input_path"]["taxonomy_ncbi"]["zip_url"]
     conda:   "envs/python_env.yaml"
@@ -191,9 +152,9 @@ rule download_taxonomy:
 
 rule download_input_pathway:
     output:
-        tsv = config["input_path"]["pathway_bakta"]["local_path"]
+        tsv = config["input_path"]["input_pathway_bakta"]["local_input_path"]
     params:
-        url = config["input_path"]["pathway_bakta"]["url"]
+        url = config["input_path"]["input_pathway_bakta"]["url"]
     conda:   "envs/python_env.yaml"
     shell:
         "wget -q {params.url} -O {output.tsv} && "
@@ -236,6 +197,7 @@ rule qc_contigs:
 # ==========================================================================
 # READS — 3 étapes
 # ==========================================================================
+READS_TREATMENT = config["output_path"]["treatment"] + "reads/"
 
 rule reads_countig:
     input:
@@ -268,6 +230,7 @@ rule reads_add_taxaname:
 # ==========================================================================
 # CONTIGS — 6 étapes
 # ==========================================================================
+CONTIGS_TREATMENT = config["output_path"]["treatment"] + "contigs/"
 
 rule contigs_counting:
     input:
@@ -329,6 +292,7 @@ rule contigs_add_taxaname:
 # ==========================================================================
 # KEGG — 6 étapes
 # ==========================================================================
+KEGG_TREATMENT = config["output_path"]["treatment"] + "kegg/"
 
 rule kegg_extraction:
     input:
@@ -341,7 +305,7 @@ rule kegg_extraction:
 rule kegg_intersec_count:
     input:
         data        = KEGG_TREATMENT + "1.Extracted/extracted_{sample}_kegg.tsv",
-        counted     = CONTIGS_TREATMENT + "1.Counted/counted_{sample}_contigs.tsv"
+        counted     = CONTIGS_TREATMENT + "1.Counted/counted_{sample}_contigs.tsv" #use contigs counts
     output:
         intersec    = KEGG_TREATMENT + "2.Intersected/intersected_{sample}_kegg.tsv"
     conda:   "envs/python_env.yaml"
@@ -375,7 +339,7 @@ rule kegg_standardization_agregation:
 rule kegg_merge_input_pathway_levels:
     input:
         data        = KEGG_TREATMENT + "022.Aggregated/stand_aggreg_{sample}_kegg.tsv",
-        input_pathway     = config["input_path"]["pathway_bakta"]["local_path"]
+        input_pathway     = config["input_path"]["input_pathway_bakta"]["local_input_path"]
     output:
         taxaname    = KEGG_TREATMENT + "023.Annotated/annotated_{sample}_kegg.tsv"
     conda:   "envs/python_env.yaml"
@@ -385,38 +349,83 @@ rule kegg_merge_input_pathway_levels:
 # PLOTS R
 # ==========================================================================
 
-rule plot_stackedbarplot_deseq2:
+TREATMENT_SOURCES = {
+    "reads":        expand(READS_TREATMENT + "3.Annotated/annotated_{sample}_reads.tsv",   sample=SAMPLES),
+    "contigs":      expand(CONTIGS_TREATMENT + "6.Annotated/annotated_{sample}_contigs.tsv", sample=SAMPLES),
+    "kegg":         expand(KEGG_TREATMENT + "023.Annotated/annotated_{sample}_kegg.tsv", sample=SAMPLES),
+    "kegg_deseq2":  expand(KEGG_TREATMENT + "3.Deseq2/deseq2_{sample}_kegg.tsv", sample=SAMPLES)
+}
+
+PLOT_PARAMS = {
+    "reads":    {"value_col": "Reads", "label": "Read counts"},
+    "contigs":  {"value_col": "RPKM",  "label": "RPKM"},
+    "kegg":     {"value_col": "RPKM",  "label": "RPKM"}
+}
+
+rule plot_stackedbarplot_DESeq2:
     input:
-        deseq_results = lambda w: config["output_path"]["rds"] + "{d}/deseq2_{c}_{d}.rds",
-        phyloseq_object     = lambda w: config["output_path"]["rds"] + "{d}/phyloseq_{d}.rds",
+        data        = lambda w: TREATMENT_SOURCES[w.source],
         metadata    = config["input_path"]["metadata"]
     output:
-        pdf     = config["output_path"]["plots"] + "stackedbarplot/deseq2/Stackedbarplot_deseq2_{source}.pdf",
-        parquet = config["output_path"]["parquet"] + "stackedbarplot_deseq2_{source}.parquet"
+        pdf         = config["output_path"]["plots"] + "stackedbarplot/{source}/Stackedbarplot_deseq2_{source}.pdf",
+        parquet     = config["output_path"]["parquet"] + "{source}/stackedbarplot_deseq2_{source}.parquet"
     params:
-        padj  = config["plots"]["volcano"]["pvalue_threshold"],
-        lfc   = config["plots"]["volcano"]["lfc_treshold"]
+        shared      = config["plots"]["shared"],
+        top_n       = config["plots"]["barplot"]["top_n"],
+        taxon_rank  = config["plots"]["barplot"]["taxon_rank"]
     conda:  "envs/r_env.yaml"
-    script: "scripts/plots/Stackedbarplot_from_DESeq2.R"
+    script: "../scripts/plots/Stackedbarplot_from_DESeq2.R"
 
-rule plot_stackedbarplot:
+rule plot_stackedbarplot_organisms:
     input:
-        data     = lambda w: TREATMENT_SOURCES[w.source],
-        metadata = config["input_path"]["metadata"]
+        data        = lambda w: TREATMENT_SOURCES[w.source],
+        metadata    = config["input_path"]["metadata"]
     output:
-        pdf     = config["output_path"]["plots"] + "stackedbarplot/{source}/Stackedbarplot_{filename}_{source}.pdf",
-        parquet = config["output_path"]["parquet"] + "{source}/stackedbarplot_{filename}_{source}.parquet"
+        pdf         = config["output_path"]["plots"] + "stackedbarplot/{source}/Stackedbarplot_organisms_abundance_{source}.pdf",
+        parquet     = ["output_path"]["parquet"] + "{source}/stackedbarplot_organisms_abundance_{source}.parquet"
     params:
-        mode        = lambda w: FILENAME_TO_MODE[w.filename],
+        shared      = config["plots"]["shared"],
         top_n       = config["plots"]["stackedbarplot"]["top_n"],
-        target_rank = config["plots"]["stackedbarplot"]["taxon_rank"],
-        value_col   = lambda w: PLOT_PARAMS[w.source]["value_col"]
+        taxon_rank  = config["plots"]["stackedbarplot"]["taxon_rank"],
+        value_col   = lambda w: PLOT_PARAMS[w.source]["value_col"],
+        label       = lambda w: PLOT_PARAMS[w.source]["label"]
     conda:  "envs/r_env.yaml"
-    script: "scripts/plots/Stackedbarplot_unified.R"
+    script: "../scripts/plots/Stackedbarplot_organisms_abundance.R"
+
+rule plot_stackedbarplot_input_pathway:
+    input:
+        data        = lambda w: TREATMENT_SOURCES["kegg"],
+        metadata    = config["input_path"]["metadata"]
+    output:
+        pdf         = config["output_path"]["plots"] + "stackedbarplot/kegg/Stackedbarplot_input_pathway_abundance_kegg.pdf",
+        parquet     = config["output_path"]["parquet"] + "{source}/stackedbarplot_input_pathway_abundance_kegg.parquet"
+    params:
+        shared      = config["plots"]["shared"],
+        top_n       = config["plots"]["stackedbarplot"]["top_n"],
+        taxon_rank  = config["plots"]["stackedbarplot"]["taxon_rank"],
+        value_col   = lambda w: PLOT_PARAMS[w.source]["value_col"],
+        label       = lambda w: PLOT_PARAMS[w.source]["label"]
+    conda:  "envs/r_env.yaml"
+    script: "../scripts/plots/Stackedbarplot_input_pathway_abundance.R"
+
+rule plot_stackedbarplot_taxonomy:
+    input:
+        data        = lambda w: TREATMENT_SOURCES[w.source],
+        metadata    = config["input_path"]["metadata"]
+        #intersec    = expand(CONTIGS_TREATMENT + "6.Annotated/annotated_{sample}_contigs.tsv", sample=SAMPLES),
+        #contigs     = expand(CONTIGS_TREATMENT + "3.RPKM/rpkm_{sample}_contigs.tsv", sample=SAMPLES)
+    output:
+        pdf         = config["output_path"]["plots"] + "stackedbarplot/{source}/Stackedbarplots_taxonomy_{source}.pdf",
+        parquet     = config["output_path"]["parquet"] + "{source}/stackedbarplot_taxonomy_{source}.parquet"
+    params:
+        taxon_rank  = config["plots"]["stackedbarplot"]["taxon_rank"],
+        top_n       = config["plots"]["stackedbarplot"]["top_n"]
+    conda:  "envs/r_env.yaml"
+    script: "../scripts/plots/Stackedbarplot_taxonomy.R"
 
 rule plot_heatmap: # CHECK
     input:
-        rds             = config["output_path"]["rds"] + "phyloseq_contigs.rds",
+        rds             = config["output_path"]["rds_contigs"] + "phyloseq_contigs.rds",
         data            = TREATMENT_SOURCES["contigs"],
         metadata        = config["input_path"]["metadata"]
     output:
@@ -450,14 +459,14 @@ rule plot_pca:
 
 rule plot_volcano_DESeq2:
     input:
-        rds         = config["output_path"]["rds"] + "deseq2_contigs.rds",
+        rds         = config["output_path"]["rds_contigs"] + "deseq2_contigs.rds",
         data        = lambda w: TREATMENT_SOURCES[w.source]
     output:
         pdf         = config["output_path"]["plots"] + "volcano/{source}/Volcano_deseq2_{source}.pdf",
         parquet     = config["output_path"]["parquet"] + "{source}/volcano_from_deseq2_{source}.parquet"
     params:
-        padj        = config["plots"]["volcano"]["pvalue_threshold"],
-        lfc         = config["plots"]["volcano"]["lfc_treshold"]
+        padj        = config["plots"]["run_volcano"]["pvalue_threshold"],
+        lfc         = config["plots"]["run_volcano"]["lfc_treshold"]
     conda:  "envs/r_env.yaml"
     script: "../scripts/plots/Volcano_from_DESeq2.R"
 

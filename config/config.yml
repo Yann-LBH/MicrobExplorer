@@ -1,5 +1,5 @@
 # ==========================================================================
-# Pipeline Metagenomics - Configuration
+# Pipeline MicrobExplorer
 # ==========================================================================
 
 # Chemins des données
@@ -22,6 +22,22 @@ output_path:
   plots: "../results/plots/"
   rds: "../results/rds/"
   parquet: "../results/parquet/"
+
+# ==========================================================================
+# ANALYSIS PARAMETERS SETUP
+# ==========================================================================
+
+datatypes:
+  heatmap: ["reads", "contigs"]
+  volcano: ["contigs", "kegg"]
+  phyloseq: ["contigs"]
+  deseq2: ["contigs", "kegg"]
+  stackedbarplot:
+    standard:
+      pathway:   ["kegg"]
+      taxonomy:  ["reads", "contigs"]
+      organisms: ["reads", "contigs"]
+    deseq2:    ["contigs", "kegg"]
 
 extensions :
   reads: ".txt"       #".kaijuNR"
@@ -131,6 +147,6 @@ plots:
     clust_method: brad
     #cluster_rows: True
 
-  run_volcano:
+  volcano:
     pvalue_threshold : 0.05
     lfc_treshold : 1.3
