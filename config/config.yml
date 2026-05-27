@@ -49,20 +49,24 @@ extensions :
 # Run parameters
 ################
 # --- Modules actifs ---
-run_taxonomy:     true
-run_reads:        true
-run_contigs:      true
-run_kegg:         true
-run_plots:        true
-run_deseq2:       true
-run_phyloseq:     true
-run_physico:      true
-run_qc:           true
+run_taxonomy:     True
+run_reads:        True
+run_contigs:      True
+run_kegg:         True
+run_plots:        True
+run_deseq2:       True
+run_phyloseq:     True
+run_physico:      True
+run_qc:           True
 
 ####################
 # General parameters
 ####################
 deseq_label: "Genus"  # Options possibles : "Contig_ID", "Phylum", "Genus", etc.
+
+# DESeq2 contrasts to generate
+# Change this list to use only the contrasts you need
+deseq2_contrasts: ["ref", "date", "combo"]  # Options: "ref", "date", "combo"
 
 # Reads parameters
 reads:

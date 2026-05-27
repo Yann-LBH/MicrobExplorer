@@ -33,31 +33,24 @@ pdf(pdf_output, width = 10, height = 8)
 
 for (f in rds_files) {
   dds <- readRDS(f)
-  analysis_name <- gsub("diagdds_|.rds", "", basename(f))
+  file_name <- basename(f)
+  analysis_name <- sub("^(deseq2_)?(.*)\\.rds$", "\\2", file_name)
+  contrast_label <- NA_character_
+  if (grepl("_(ref|date|combo)(?:_.*)?\\.rds$", file_name)) {
+    contrast_label <- sub(".*_(ref|date|combo)(?:_.*)?\\.rds$", "\\1", file_name)
+  }
   
-  # Get all contrast names available in the dds object
-  contrasts <- resultsNames(dds)
-  contrasts <- contrasts[contrasts != "Intercept"]
-  
-  for (c in contrasts) {
-    # 1. Extract and convert to data.table
-    res <- as.data.table(as.data.frame(results(dds, name = c)), keep.rownames = "KO_Number")
-    res[, `:=`(Analysis = analysis_name, Contrast = c)]
-    
-    # 2. Status Assignment (In-place)
+  process_result <- function(res, contrast) {
+    res <- as.data.table(as.data.frame(res), keep.rownames = "KO_Number")
+    res[, `:=`(Analysis = analysis_name, Contrast = contrast)]
     res[, Color_Status := "Non Significatif"]
     res[padj <= padj_thresh & log2FoldChange >= lfc_thresh, Color_Status := "Sur"]
     res[padj <= padj_thresh & log2FoldChange <= -lfc_thresh, Color_Status := "Sous"]
-    
-    # 3. Labeling Top 10 (In-place)
     res[, Label := ""]
     setorder(res, padj, na.last = TRUE)
     res[padj <= padj_thresh][1:10, Label := KO_Number]
+    all_results_dt[[paste0(analysis_name, "_", contrast)]] <<- res
     
-    # Store for Parquet export
-    all_results_dt[[paste0(analysis_name, "_", c)]] <- res
-    
-    # 4. Generate Plot
     p <- ggplot(res, aes(x = log2FoldChange, y = -log10(padj), color = Color_Status)) +
       geom_point(alpha = 0.4, size = 1.2) +
       geom_vline(xintercept = c(-lfc_thresh, lfc_thresh), linetype = "dashed", alpha = 0.5) +
@@ -69,12 +62,24 @@ for (f in rds_files) {
       theme_minimal() +
       labs(
         title = paste("Analysis:", analysis_name),
-        subtitle = paste("Contrast:", c, "| padj <=", padj_thresh),
+        subtitle = paste("Contrast:", contrast, "| padj <=", padj_thresh),
         x = "Log2 Fold Change",
         y = "-log10(adj. P-value)"
       )
-    
-    print(p) # Sends plot to the PDF
+    print(p)
+  }
+  
+  if (inherits(dds, "DESeqDataSet")) {
+    contrasts <- resultsNames(dds)
+    contrasts <- contrasts[contrasts != "Intercept"]
+    for (c in contrasts) {
+      res <- results(dds, name = c)
+      process_result(res, c)
+    }
+  } else if (inherits(dds, "DESeqResults")) {
+    process_result(dds, ifelse(is.na(contrast_label), "unknown", contrast_label))
+  } else {
+    stop(sprintf("Unsupported input type for file %s: %s", f, class(dds)[1]))
   }
 }
 

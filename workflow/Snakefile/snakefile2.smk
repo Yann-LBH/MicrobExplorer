@@ -148,7 +148,7 @@ def get_targets():
     # --- DESeq2 ---
     if config["run_deseq2"]:
         datatypes = ["contigs", "kegg"]
-        contrasts = ["ref", "date", "combo"]
+        contrasts = config.get("deseq2_contrasts", ["ref", "date", "combo"])
 
         targets += [
             config["output_path"]["rds"] + f"{d}/deseq2_{c}_{d}.rds"
@@ -379,7 +379,7 @@ rule kegg_merge_input_pathway_levels:
     output:
         taxaname    = KEGG_TREATMENT + "023.Annotated/annotated_{sample}_kegg.tsv"
     conda:   "envs/python_env.yaml"
-    script:  "../scripts/kegg/023_Kegg_merge_input_pathway_levels.py"
+    script:  "../scripts/kegg/023_Kegg_merge_pathway_levels.py"
 
 # ==========================================================================
 # PLOTS R
@@ -387,41 +387,49 @@ rule kegg_merge_input_pathway_levels:
 
 rule plot_stackedbarplot_deseq2:
     input:
-        deseq_results = lambda w: config["output_path"]["rds"] + "{d}/deseq2_{c}_{d}.rds",
-        phyloseq_object     = lambda w: config["output_path"]["rds"] + "{d}/phyloseq_{d}.rds",
+        deseq_files = lambda w: expand(
+            config["output_path"]["rds"] + "{source}/deseq2_{contrast}_{source}.rds",
+            source=w.source,
+            contrast=config.get("deseq2_contrasts", ["ref", "date", "combo"])
+        ),
+        phyloseq    = config["output_path"]["rds"] + "{source}/phyloseq_{source}.rds",
         metadata    = config["input_path"]["metadata"]
     output:
         pdf     = config["output_path"]["plots"] + "stackedbarplot/deseq2/Stackedbarplot_deseq2_{source}.pdf",
         parquet = config["output_path"]["parquet"] + "stackedbarplot_deseq2_{source}.parquet"
     params:
-        padj  = config["plots"]["volcano"]["pvalue_threshold"],
-        lfc   = config["plots"]["volcano"]["lfc_treshold"]
+        padj      = config["plots"]["volcano"]["pvalue_threshold"],
+        lfc       = config["plots"]["volcano"]["lfc_treshold"],
+        contrasts = config.get("deseq2_contrasts", ["ref", "date", "combo"])
     conda:  "envs/r_env.yaml"
-    script: "scripts/plots/Stackedbarplot_from_DESeq2.R"
+    script: "../scripts/plots/Stackedbarplot_from_DESeq2.R"
 
 rule plot_stackedbarplot:
     input:
         data     = lambda w: TREATMENT_SOURCES[w.source],
         metadata = config["input_path"]["metadata"]
     output:
-        pdf     = config["output_path"]["plots"] + "stackedbarplot/{source}/Stackedbarplot_{filename}_{source}.pdf",
-        parquet = config["output_path"]["parquet"] + "{source}/stackedbarplot_{filename}_{source}.parquet"
+        pdf     = config["output_path"]["plots"] + "stackedbarplot/{mode}/Stackedbarplot_{filename}_{source}.pdf",
+        parquet = config["output_path"]["parquet"] + "stackedbarplot/{mode}/stackedbarplot_{filename}_{source}.parquet"
+    wildcard_constraints:
+        # Empêche le wildcard {mode} de capturer le mot "deseq2"
+        mode = "(?!deseq2)[a-zA-Z0-9_]+"
     params:
-        mode        = lambda w: FILENAME_TO_MODE[w.filename],
+        mode        = lambda w: FILENAME_TO_MODE.get(w.filename, w.filename),
         top_n       = config["plots"]["stackedbarplot"]["top_n"],
         target_rank = config["plots"]["stackedbarplot"]["taxon_rank"],
         value_col   = lambda w: PLOT_PARAMS[w.source]["value_col"]
     conda:  "envs/r_env.yaml"
-    script: "scripts/plots/Stackedbarplot_unified.R"
+    script: "../scripts/plots/Stackedbarplot_unified.R"
 
-rule plot_heatmap: # CHECK
+rule plot_heatmap:
     input:
-        rds             = config["output_path"]["rds"] + "phyloseq_contigs.rds",
-        data            = TREATMENT_SOURCES["contigs"],
+        rds             = config["output_path"]["rds"] + "{source}/phyloseq_{source}.rds",
+        data            = lambda w: TREATMENT_SOURCES[w.source],
         metadata        = config["input_path"]["metadata"]
     output:
-        pdf             = config["output_path"]["plots"] + "contigs/heatmap/Heatmap_contigs.pdf",
-        parquet         = config["output_path"]["parquet"] + "contigs/heatmap_contigs.parquet",
+        pdf             = config["output_path"]["plots"] + "heatmap/Heatmap_{source}.pdf",
+        parquet         = config["output_path"]["parquet"] + "heatmap_{source}.parquet",
     params:
         shared          = config["plots"]["shared"],
         top_n           = config["plots"]["heatmap"]["top_n"],
@@ -450,8 +458,11 @@ rule plot_pca:
 
 rule plot_volcano_DESeq2:
     input:
-        rds         = config["output_path"]["rds"] + "deseq2_contigs.rds",
-        data        = lambda w: TREATMENT_SOURCES[w.source]
+        deseq_files = lambda w: expand(
+            config["output_path"]["rds"] + "{source}/deseq2_{contrast}_{source}.rds",
+            source=[w.source],
+            contrast=config.get("deseq2_contrasts", ["ref", "date", "combo"])
+        )
     output:
         pdf         = config["output_path"]["plots"] + "volcano/{source}/Volcano_deseq2_{source}.pdf",
         parquet     = config["output_path"]["parquet"] + "{source}/volcano_from_deseq2_{source}.parquet"

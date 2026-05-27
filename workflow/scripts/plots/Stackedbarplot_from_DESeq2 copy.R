@@ -19,8 +19,10 @@ source("scripts/plots/utils_Barplot_DESeq2.R")
 # Configuration (Snakemake)
 # ==========================================================================
 # Input files
-deseq_files <- snakemake[["input"]][["deseq_files"]]  # List of DESeq2 RDS files
-ps_path     <- snakemake[["input"]][["phyloseq"]]
+deseq_ref_path  <- snakemake[["input"]][["deseq_ref"]]
+deseq_date_path <- snakemake[["input"]][["deseq_date"]]
+deseq_combo_path <- snakemake[["input"]][["deseq_combo"]]
+ps_path         <- snakemake[["input"]][["phyloseq"]]
 
 # Output files
 pdf_out     <- snakemake[["output"]][["pdf"]]
@@ -29,24 +31,18 @@ parquet_out <- snakemake[["output"]][["parquet"]]
 # Thresholds from config/params
 padj_threshold <- snakemake@params[["padj"]] %||% 0.05
 lfc_thresh     <- snakemake@params[["lfc"]] %||% 0
-contrasts_list <- snakemake@params[["contrasts"]]  # e.g., ["ref", "date", "combo"]
 
 # ==========================================================================
 # 1. Data Loading
 # ==========================================================================
 message("Loading data...")
-message(sprintf("  → DESeq2 contrasts configured: %s", paste(contrasts_list, collapse=", ")))
 
-# Load DESeq2 results dynamically from file list
-deseq_paths <- list()
-for (i in seq_along(deseq_files)) {
-  file_path <- deseq_files[[i]]
-  # Extract contrast type from filename (e.g., "deseq2_ref_contigs.rds" → "ref")
-  contrast_name <- gsub(".*deseq2_([^_]+)_.*", "\\1", basename(file_path))
-  deseq_paths[[contrast_name]] <- file_path
-}
-
-message(sprintf("  → Found %d files: %s", length(deseq_paths), paste(names(deseq_paths), collapse=", ")))
+# Load DESeq2 results
+deseq_paths <- list(
+  deseq_ref   = deseq_ref_path,
+  deseq_date  = deseq_date_path,
+  deseq_combo = deseq_combo_path
+)
 
 results_list <- load_deseq2_results(deseq_paths)
 
