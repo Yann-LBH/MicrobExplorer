@@ -1,8 +1,22 @@
 # ==========================================================================
 # Pipeline MicrobExplorer
+# Configuration file (YAML format)
+# Author: "Yann Le Bihan"
+# Date: "2025-12-01"
+# Link : https://github.com/Yann-LBH/MicrobExplorer
+#
+# extensions used for input:
+#  reads: ".txt"       #".kaijuNR"
+#  contigs: ".txt"       #".tsv"
+#  bakta: ".txt"       #".gff3"
+#  plot: ".pdf"
 # ==========================================================================
 
-# Chemins des données
+# ==========================================================================
+# DATA PATH
+# ==========================================================================
+samples_file: "config/samples.tsv"
+
 input_path:
   data_raw: "data/raw/"
   metadata: "data/metadata/metadata.csv"
@@ -14,7 +28,7 @@ input_path:
   pathway_bakta: 
     url : "https://rest.kegg.jp/get/br:ko00001"
     local_path: "data/pathway_bakta/pathway.tsv"
-  physico_params: "data/physico_parameters/parameters.xlxs"
+  physico_params: "data/physico_parameters/parameters.xlsx"
   gff3: "data/gff3"
 
 output_path:
@@ -22,32 +36,15 @@ output_path:
   plots: "../results/plots/"
   rds: "../results/rds/"
   parquet: "../results/parquet/"
-
-# ==========================================================================
-# ANALYSIS PARAMETERS SETUP
+  qc: "../results/qc/"
 # ==========================================================================
 
-datatypes:
-  heatmap: ["reads", "contigs"]
-  volcano: ["contigs", "kegg"]
-  phyloseq: ["contigs"]
-  deseq2: ["contigs", "kegg"]
-  stackedbarplot:
-    standard:
-      pathway:   ["kegg"]
-      taxonomy:  ["reads", "contigs"]
-      organisms: ["reads", "contigs"]
-    deseq2:    ["contigs", "kegg"]
+# ==========================================================================
+# PIPELINE CONFIGURATION
+# ==========================================================================
 
-extensions :
-  reads: ".txt"       #".kaijuNR"
-  contigs: ".txt"       #".tsv"
-  bakta: ".txt"       #".gff3"
-  plot: ".pdf"
+# Run analysis and plots
 
-################
-# Run parameters
-################
 # --- Modules actifs ---
 run_taxonomy:     True
 run_reads:        True
@@ -59,9 +56,23 @@ run_phyloseq:     True
 run_physico:      True
 run_qc:           True
 
-####################
+# Data types used for each plot/analysis type
+
+datatypes:
+  phyloseq: ["contigs"]
+  deseq2: ["contigs", "kegg"]
+  stackedbarplot:
+    standard:
+      pathway:   ["kegg"]
+      taxonomy:  ["reads", "contigs"]
+      organisms: ["reads", "contigs"]
+    deseq2:    ["contigs", "kegg"]
+  heatmap: ["reads", "contigs"]
+  volcano: ["contigs", "kegg"]
+
+
 # General parameters
-####################
+
 deseq_label: "Genus"  # Options possibles : "Contig_ID", "Phylum", "Genus", etc.
 
 # DESeq2 contrasts to generate
@@ -97,9 +108,8 @@ kegg:
   pvalue_threshold : 0.05
   lfc_treshold : 1.3
 
-####################
 # Graphic parameters
-####################
+
 #utile ?
 taxonomic_levels:
   - "Phylum"
@@ -154,3 +164,4 @@ plots:
   volcano:
     pvalue_threshold : 0.05
     lfc_treshold : 1.3
+# ==========================================================================
