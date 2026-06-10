@@ -1,3 +1,0 @@
-Verifier les scripts 022 et 023 kegg
-checker les scripts ok
-Data table sur physico chim

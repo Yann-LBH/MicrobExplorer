@@ -6,10 +6,10 @@
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
-def analyser_kaiju(path_in, path_out):
+def analyser_kaiju(PATH_IN, PATH_OUT):
     counter = {}
     
-    with open(path_in, 'r', encoding='utf-8') as f:
+    with open(PATH_IN, 'r', encoding='utf-8') as f:
         for line in f:
             # Kaiju sépare généralement les column par des tabulations
             column = line.strip().split('\t')
@@ -22,7 +22,7 @@ def analyser_kaiju(path_in, path_out):
 
     # Écriture des résultats
     if counter:
-        with open(path_out, 'w', encoding='utf-8') as f_out:
+        with open(PATH_OUT, 'w', encoding='utf-8') as f_out:
             # On trie par nombre d'occurrences (du plus grand au plus petit)
             for taxon, total in sorted(counter.items(), key=lambda x: x[1], reverse=True):
                 f_out.write(f"Taxon {taxon} : {total} reads\n")
@@ -32,8 +32,7 @@ def analyser_kaiju(path_in, path_out):
 # ==========================================================================
 if __name__ == "__main__":
 
-    path_in     = snakemake.input.raw_data
-    path_out    = snakemake.output.counted
-    current     = snakemake.input.current_sample
+    PATH_IN     = snakemake.input.raw_data
+    PATH_OUT    = snakemake.output.counted
 
-    print(f"✓ Counting step passed -> {path_out}")
+    print(f"✓ READS : Counting step passed successfully -> {PATH_OUT}")

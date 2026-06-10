@@ -244,6 +244,8 @@ rule reads_filter:
         data     = READS_TREATMENT + "1.Counted/counted_{sample}_reads.tsv"
     output:
         filtered = READS_TREATMENT + "2.Filtered/filtered_{sample}_reads.tsv"
+    params:
+        count_threshold = config["reads"]["count_threshold"]
     conda:   "../envs/py_env.yaml"
     script:  "../scripts/reads/02_Reads_filter.py"
 
@@ -273,20 +275,29 @@ rule contigs_counting:
     conda:   "../envs/py_env.yaml"
     script:  "../scripts/contigs/01_Contigs_counting.py"
 
+# Optimisation of rule filter use for global abundance calculation
+rule contigs_global_abundance:
+    input:
+        all_data = expand(CONTIGS_TREATMENT + "1.Counted/counted_{sample}_contigs.tsv", sample=SAMPLES)
+    output:
+        global_abundance = CONTIGS_TREATMENT + "global_abundance_contigs.tsv"
+    conda:   "../envs/py_env.yaml"
+    script:  "../scripts/contigs/02_a_Contigs_global_abundance.py"
+
 rule contigs_filter:
     input:
-        data                = CONTIGS_TREATMENT + "1.Counted/counted_{sample}_contigs.tsv"
-        #current_sample = "results/contigs/1.Counted/counted_{sample}_contigs.tsv"
+        data                = CONTIGS_TREATMENT + "1.Counted/counted_{sample}_contigs.tsv",
+        global_abundance    = CONTIGS_TREATMENT + "global_abundance_contigs.tsv"
     output:
         filtered            = CONTIGS_TREATMENT + "2.Filtered/filtered_{sample}_contigs.tsv"
     params:
         abundance_threshold = config["contigs"]["abundance_threshold"]
     conda:   "../envs/py_env.yaml"
-    script:  "../scripts/contigs/02_Contigs_filter.py"
+    script:  "../scripts/contigs/02_b_Contigs_filter.py"
 
 rule contigs_rpkm:
     input:
-        data = CONTIGS_TREATMENT + "2.Filtered/filtered_{sample}_contigs.tsv"
+        data = CONTIGS_TREATMENT + "1.Counted/counted_{sample}_contigs.tsv"
     output:
         rpkm = CONTIGS_TREATMENT + "3.RPKM/rpkm_{sample}_contigs.tsv"
     conda:   "../envs/py_env.yaml"
@@ -294,7 +305,7 @@ rule contigs_rpkm:
 
 rule contigs_rpkm_filter:
     input:
-        data            = CONTIGS_TREATMENT + "3.RPKM/rpkm_{sample}_contigs.tsv"
+        data            = CONTIGS_TREATMENT + "3.RPKM/rpkm_{sample}_contigs.tsv", sample=SAMPLES)
     output:
         rpkm_filtered   = CONTIGS_TREATMENT + "4.RPKM_Filtered/rpkm_filtered_{sample}_contigs.tsv"
     params:
@@ -304,6 +315,7 @@ rule contigs_rpkm_filter:
 
 rule contigs_union:
     input:
+        raw_data            = lambda w: CONTIGS_FILES[w.sample],
         abundance       = CONTIGS_TREATMENT + "2.Filtered/filtered_{sample}_contigs.tsv",
         rpkm_filtered   = CONTIGS_TREATMENT + "4.RPKM_Filtered/rpkm_filtered_{sample}_contigs.tsv"
     output:

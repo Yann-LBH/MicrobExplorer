@@ -15,21 +15,21 @@ FILL_VALUES = {
     "weight":  0
 }
 
-def load_reference(pathway: str) -> pd.DataFrame:
+def load_reference(PATHWAY: str) -> pd.DataFrame:
     """Charge et prépare la table de référence KEGG."""
-    ref = pd.read_csv(pathway, sep="\t")
+    ref = pd.read_csv(PATHWAY, sep="\t")
     ref.columns = ref.columns.str.strip()
     ref["ko"] = ref["ko"].astype(str).str.replace("ko:", "", regex=False)
     ref[["level_1", "level_2", "level_3"]] = ref[["level_1", "level_2", "level_3"]].fillna("Unassigned")
     ref["weight"] = ref["weight"].fillna(0)
     return ref
 
-def annotate_with_hierarchy(path_in: str, ref: pd.DataFrame, path_out: str) -> int:
+def annotate_with_hierarchy(PATH_IN: str, ref: pd.DataFrame, PATH_OUT: str) -> int:
     """
     Jointure KO -> hiérarchie KEGG et ajustement pondéré par weight.
     Retourne le nombre de lignes annotées.
     """
-    df = pd.read_csv(path_in, sep="\t")
+    df = pd.read_csv(PATH_IN, sep="\t")
 
     if "kegg" in df.columns:
         df.rename(columns={"kegg": "ko"}, inplace=True)
@@ -42,17 +42,18 @@ def annotate_with_hierarchy(path_in: str, ref: pd.DataFrame, path_out: str) -> i
         merged[f"adj_{col}"] = merged[col] * merged["weight"]
 
     merged.fillna(value=FILL_VALUES, inplace=True)
-    merged.to_csv(path_out, sep="\t", index=False)
+    merged.to_csv(PATH_OUT, sep="\t", index=False)
 
     return len(merged)
 
 # --- Exécution ---
 if __name__ == "__main__":
 
-    path_in     = snakemake.input.data
-    path_out    = snakemake.output.taxname
-    pathway     = snakemake.input.pathway
+    PATH_IN     = snakemake.input.data
+    PATH_OUT    = snakemake.output.taxname
+    PATHWAY     = snakemake.input.pathway
 
-    ref = load_reference(pathway)
-    n   = annotate_with_hierarchy(path_in, ref, path_out)
-    print(f"✓ {n} lignes annotées -> {path_out}")
+    ref = load_reference(PATHWAY)
+    n   = annotate_with_hierarchy(PATH_IN, ref, PATH_OUT)
+    
+    print(f"✓ KEGG : Merge step passed successfully -> {n} lines annotated -> {PATH_OUT}")

@@ -21,25 +21,26 @@ def get_min_rpkm_across_samples(files: list[str]) -> pd.Series:
     # concat en colonnes puis min par ligne — gère les NaN (contig absent) comme 0.0
     return pd.concat(frames, axis=1).fillna(0.0).min(axis=1)
 
-def filter_by_min_rpkm(current_path: str, path_out: str,
-                        global_min: pd.Series, rpkm_threshold: float) -> int:
+def filter_by_min_rpkm(current_path: str, PATH_OUT: str,
+                        global_min: pd.Series, RPKM_THRESHOLD: float) -> int:
     """
     Filtre le TSV courant : garde les contigs dont le RPKM min global >= threshold.
     Retourne le nombre de lignes conservées.
     """
     df = pd.read_csv(current_path, sep="\t")
-    mask = df["Contig_ID"].map(global_min).fillna(0.0) >= rpkm_threshold
-    df[mask].to_csv(path_out, sep="\t", index=False)
+    mask = df["Contig_ID"].map(global_min).fillna(0.0) >= RPKM_THRESHOLD
+    df[mask].to_csv(PATH_OUT, sep="\t", index=False)
     return mask.sum()
 
 # --- Exécution ---
 if __name__ == "__main__":
-    path_in  = snakemake.input.data
+
+    PATH_IN  = snakemake.input.data
     current    = snakemake.input.current_sample
-    path_out   = snakemake.output.rpkm_filtered
-    rpkm_threshold  = float(snakemake.params.rpkm_threshold)
+    PATH_OUT   = snakemake.output.rpkm_filtered
+    RPKM_THRESHOLD  = float(snakemake.params.rpkm_threshold)
 
-    global_min = get_min_rpkm_across_samples(path_in)
-    n_kept     = filter_by_min_rpkm(current, path_out, global_min, rpkm_threshold)
+    global_min = get_min_rpkm_across_samples(PATH_IN)
+    n_kept     = filter_by_min_rpkm(current, PATH_OUT, global_min, RPKM_THRESHOLD)
 
-    print(f"✓ {n_kept} contigs conservés (seuil RPKM={rpkm_threshold}) -> {path_out}")
+    print(f"✓ CONTIGS : Filtered step passed successfully -> {n_kept} contigs kept (threshold={RPKM_THRESHOLD}) -> {PATH_OUT}")

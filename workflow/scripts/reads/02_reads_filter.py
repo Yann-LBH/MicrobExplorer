@@ -6,44 +6,46 @@
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
-def trimming_kaiju(path_in, path_out):
-    
+def filtering_kaiju(PATH_IN, PATH_OUT, COUNT_THRESHOLD):
+    """Filters Kaiju output lines based on a minimum read count threshold."""
     try:
-        with open(path_in, 'r', encoding='utf-8') as f_in, \
-             open(path_out, 'w', encoding='utf-8') as f_out:
+        with open(PATH_IN, 'r', encoding='utf-8') as f_in, \
+             open(PATH_OUT, 'w', encoding='utf-8') as f_out:
 
-            #garde les reads >= 100
             for line in f_in:
-            # On découpe la ligne par espaces
+                # Split line by spaces to isolate columns
                 columns = line.strip().split(' ')
             
                 if len(columns) >= 4:
                     try:
-                        # Conversion du nombre de reads en entier
+                        # Convert read count column to integer
                         number_reads = int(columns[3]) 
                     
-                        # On ne garde que si c'est >= 100
-                        if number_reads >= 100:
+                        # Keep line only if it meets or exceeds the threshold
+                        if number_reads >= COUNT_THRESHOLD:
                             f_out.write(line)
                     except ValueError:
-                        # En cas d'en-tête (texte au lieu de nombre), on ignore l'erreur
+                        # Skip header lines or unexpected text formatting
                         continue
-            #garde les 100 premières lignes seulement ( les plus abondants)
-            #for i, lines in enumerate(f_in):
-                #if i >= 100:
-                    #break
-                #f_out.write(lines)
 
         return True
     except Exception as e:
-            print(f"❌ Erreur sur le fichier {path_in}: {e}")
-            return False
+        print(f"❌ Error processing file {PATH_IN}: {e}")
+        return False
     
 # ==========================================================================
 if __name__ == "__main__":
 
-    path_in        = snakemake.input.data
-    path_out     = snakemake.output.filtered
+    PATH_IN     = snakemake.input.data
+    PATH_OUT    = snakemake.output.filtered
 
-    print(f"✓ Filtering step passed -> {path_out}")
+    COUNT_THRESHOLD = snakemake.params.count_threshold
+
+    success = filtering_kaiju(PATH_IN, PATH_OUT, COUNT_THRESHOLD)
+
+    if success:
+        print(f"✓ READS : Filtering step passed successfully -> {PATH_OUT}")
+    else:
+        # Raise an exception so Snakemake knows the script failed
+        raise RuntimeError(f"Filtering failed for file: {PATH_IN}")
     

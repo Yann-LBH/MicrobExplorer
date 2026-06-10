@@ -8,27 +8,28 @@
 
 import pandas as pd
 
-def agreger_par_ko(path_in: str, path_out: str) -> int:
+def agreger_par_ko(PATH_IN: str, PATH_OUT: str) -> int:
     """
     Agrège par code KEGG en sommant la colonne 'standardization'.
     Retourne le nombre de KO uniques.
     """
-    df = pd.read_csv(path_in, sep="\t", usecols=["kegg", "standardization"])
+    df = pd.read_csv(PATH_IN, sep="\t", usecols=["kegg", "standardization"])
 
     missing = {"kegg", "standardization"} - set(df.columns)
     if missing:
         raise KeyError(f"Colonnes manquantes : {missing}")
 
     df_ko = df.groupby("kegg", as_index=False)["standardization"].sum()
-    df_ko.to_csv(path_out, sep="\t", index=False)
+    df_ko.to_csv(PATH_OUT, sep="\t", index=False)
 
     return len(df_ko)
 
 # --- Exécution ---
 if __name__ == "__main__":
 
-    path_in = snakemake.input.data
-    path_out = snakemake.output.agreg
+    PATH_IN = snakemake.input.data
+    PATH_OUT = snakemake.output.agreg
 
-    n = agreger_par_ko(path_in, path_out)
-    print(f"✓ {n} KO uniques -> {path_out}")
+    n = agreger_par_ko(PATH_IN, PATH_OUT)
+    
+    print(f"✓ KEGG : Aggregation step passed successfully -> {n} unique KOs -> {PATH_OUT}")

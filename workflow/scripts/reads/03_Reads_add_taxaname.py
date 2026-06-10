@@ -71,4 +71,4 @@ if __name__ == "__main__":
     df_final  = enrich(df_counts, mapping, noise, top_n)
     df_final.to_csv(snakemake.output.taxaname, sep="\t", index=False)
 
-    print(f"✓ {len(df_final)} lignes -> {snakemake.output.taxaname}")
+    print(f"✓ READS : Enrichment step passed successfully -> {snakemake.output.taxaname}")

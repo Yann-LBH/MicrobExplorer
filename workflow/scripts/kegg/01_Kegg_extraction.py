@@ -12,15 +12,15 @@ import re
 KEGG_PATTERN = re.compile(r'K\d{5}')
 HEADER = ["contig", "kegg", "gene_length"]
 
-def process_gff_kegg(input_path: str, output_path: str) -> int:
+def process_gff_kegg(PATH_IN: str, PATH_OUT: str) -> int:
     """
     Parse un fichier GFF3 et extrait les annotations KEGG en streaming.
     Retourne le nombre d'annotations extraites.
     """
     count = 0
 
-    with open(input_path, "r") as f_in, \
-         open(output_path, "w", newline="") as f_out:
+    with open(PATH_IN, "r") as f_in, \
+         open(PATH_OUT, "w", newline="") as f_out:
 
         f_out.write("\t".join(HEADER) + "\n")
 
@@ -45,8 +45,10 @@ def process_gff_kegg(input_path: str, output_path: str) -> int:
 
 # --- Exécution ---
 if __name__ == "__main__":
-    data = snakemake.input.gff
-    extracted = snakemake.output.tsv
 
-    n = process_gff_kegg(data, extracted)
-    print(f"✓ {n} annotations extraites -> {extracted}")
+    PATH_IN = snakemake.input.gff
+    PATH_OUT = snakemake.output.tsv
+
+    n = process_gff_kegg(PATH_IN, PATH_OUT)
+
+    print(f"✓ KEGG : Extraction step passed successfully -> {n} annotations extracted -> {PATH_OUT}")

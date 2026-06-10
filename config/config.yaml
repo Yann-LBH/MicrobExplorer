@@ -100,7 +100,7 @@ reads:
 # Contigs parameters
 contigs:
   length_threshold: 3000
-  abundance_threshold: 1000
+  abundance_threshold: 100
   rpkm_threshold: 0.5
 
 # Kegg parameters
