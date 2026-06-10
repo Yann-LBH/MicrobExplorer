@@ -12,22 +12,16 @@ library(arrow)
 library(readr)  # uniquement pour read_tsv — fread gère aussi les TSV
 
 # ==========================================================================
-# Configuration (variables Snakemake)
+# Configuration (Snakemake)
 # ==========================================================================
-data_contigs_path     <- snakemake[["input"]][["contigs_dir"]]    # "Statistics/3_Deseq2"
-data_kegg_path     <- snakemake[["input"]][["kegg_dir"]] 
-saving_folder <- snakemake[["output"]][["rds_dir"]]     # "RDS_obj/"
-parquet_dir   <- snakemake[["parameter"]][["parquet_dir"]] # "Data/Parquet/deseq2/"
-
-dir.create(saving_folder, recursive = TRUE, showWarnings = FALSE)
-dir.create(parquet_dir,   recursive = TRUE, showWarnings = FALSE)
-
-setDTthreads(0L)
+data            <- snakemake[["input"]][["data"]]
+rds_save        <- snakemake[["output"]][["rds"]]
+parquet_save    <- snakemake[["output"]][["parquet"]]
 
 # ==========================================================================
-# 1. Chargement des fichiers — une seule fois pour les 3 analyses
+# 1. Data Import
 # ==========================================================================
-files <- list.files(data_path, pattern = "\\.tsv$", full.names = TRUE)
+files <- list.files(data, pattern = "\\.tsv$", full.names = TRUE)
 
 # Lecture avec data.table (plus rapide que read_tsv en boucle)
 # + extraction metadata en une passe
@@ -84,7 +78,7 @@ extract_results <- function(dds, contrast_vec, nom_contraste, extra_cols) {
 # ==========================================================================
 # 2. Analyse par Digesteur (TD1 comme référence)
 # ==========================================================================
-run_deseq_by_digesteur_ref <- function(count_matrix, meta_dt, saving_folder, parquet_dir) {
+run_deseq_by_digesteur_ref <- function(count_matrix, meta_dt, rds_save, parquet_save) {
   
   col_data           <- as.data.frame(meta_dt[, .(sample_id, Digesteur)])
   rownames(col_data) <- col_data$sample_id
@@ -93,7 +87,7 @@ run_deseq_by_digesteur_ref <- function(count_matrix, meta_dt, saving_folder, par
   dds <- DESeqDataSetFromMatrix(count_matrix, col_data, design = ~ Digesteur)
   dds <- estimateSizeFactors(dds, type = "poscounts")
   dds <- DESeq(dds, test = "Wald", fitType = "parametric")
-  saveRDS(dds, file.path(saving_folder, "diagdds_digesteur_ref.rds"))  # pour PCA/diagnostics
+  saveRDS(dds, file.path(rds_save, "diagdds_digesteur_ref.rds"))  # pour PCA/diagnostics
   
   g2     <- "TD1"
   groupes <- levels(col_data$Digesteur)
@@ -109,14 +103,14 @@ run_deseq_by_digesteur_ref <- function(count_matrix, meta_dt, saving_folder, par
   ))
   
   write_parquet(results_dt,
-                file.path(parquet_dir, "deseq2_digesteur_vs_TD1.parquet"))
+                file.path(parquet_save, "deseq2_digesteur_vs_TD1.parquet"))
   message("✓ Par digesteur (ref TD1) : ", nrow(results_dt), " lignes")
 }
 
 # ==========================================================================
 # 3. Analyse par date (T vs T-1)
 # ==========================================================================
-run_deseq_by_date <- function(count_matrix, meta_dt, saving_folder, parquet_dir) {
+run_deseq_by_date <- function(count_matrix, meta_dt, rds_save, parquet_save) {
   
   col_data            <- as.data.frame(meta_dt[, .(sample_id, Date_Raw, Date_Real)])
   rownames(col_data)  <- col_data$sample_id
@@ -125,7 +119,7 @@ run_deseq_by_date <- function(count_matrix, meta_dt, saving_folder, parquet_dir)
   dds <- DESeqDataSetFromMatrix(count_matrix, col_data, design = ~ Date_Group)
   dds <- estimateSizeFactors(dds, type = "poscounts")
   dds <- DESeq(dds, test = "Wald", fitType = "parametric")
-  saveRDS(dds, file.path(saving_folder, "diagdds_date.rds"))
+  saveRDS(dds, file.path(rds_save, "diagdds_date.rds"))
   
   # Timeline triée chronologiquement
   timeline <- unique(meta_dt[, .(Date_Real, Date_Raw)])[order(Date_Real)]
@@ -148,14 +142,14 @@ run_deseq_by_date <- function(count_matrix, meta_dt, saving_folder, parquet_dir)
   ))
   
   write_parquet(results_dt,
-                file.path(parquet_dir, "deseq2_date_timeline.parquet"))
+                file.path(parquet_save, "deseq2_date_timeline.parquet"))
   message("✓ Par date (T vs T-1) : ", nrow(results_dt), " lignes")
 }
 
 # ==========================================================================
 # 4. Analyse par digesteur (toutes combinaisons)
 # ==========================================================================
-run_deseq_by_digesteur_combos <- function(count_matrix, meta_dt, saving_folder, parquet_dir) {
+run_deseq_by_digesteur_combos <- function(count_matrix, meta_dt, rds_save, parquet_save) {
   
   col_data           <- as.data.frame(meta_dt[, .(sample_id, Digesteur, Date_Raw)])
   rownames(col_data) <- col_data$sample_id
@@ -164,7 +158,7 @@ run_deseq_by_digesteur_combos <- function(count_matrix, meta_dt, saving_folder, 
   dds <- DESeqDataSetFromMatrix(count_matrix, col_data, design = ~ Digesteur)
   dds <- estimateSizeFactors(dds, type = "poscounts")
   dds <- DESeq(dds, test = "Wald", fitType = "parametric")
-  saveRDS(dds, file.path(saving_folder, "diagdds_digesteur_combos.rds"))
+  saveRDS(dds, file.path(rds_save, "diagdds_digesteur_combos.rds"))
   
   combos     <- combn(levels(col_data$Digesteur), 2, simplify = FALSE)
   
@@ -177,15 +171,15 @@ run_deseq_by_digesteur_combos <- function(count_matrix, meta_dt, saving_folder, 
   }))
   
   write_parquet(results_dt,
-                file.path(parquet_dir, "deseq2_digesteur_combos.parquet"))
+                file.path(parquet_save, "deseq2_digesteur_combos.parquet"))
   message("✓ Par digesteur (combos) : ", nrow(results_dt), " lignes")
 }
 
 # ==========================================================================
 # Exécution
 # ==========================================================================
-run_deseq_by_digesteur_ref   (count_matrix, meta_dt, saving_folder, parquet_dir)
-run_deseq_by_date            (count_matrix, meta_dt, saving_folder, parquet_dir)
-run_deseq_by_digesteur_combos(count_matrix, meta_dt, saving_folder, parquet_dir)
+run_deseq_by_digesteur_ref   (count_matrix, meta_dt, rds_save, parquet_save)
+run_deseq_by_date            (count_matrix, meta_dt, rds_save, parquet_save)
+run_deseq_by_digesteur_combos(count_matrix, meta_dt, rds_save, parquet_save)
 
 message("Pipeline DESeq2 terminée.")

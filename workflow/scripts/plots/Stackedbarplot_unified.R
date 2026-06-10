@@ -18,29 +18,16 @@ library(arrow)
 # ==========================================================================
 # Snakemake configuration
 # ==========================================================================
-try(snakemake, silent = TRUE)
-if (!exists("snakemake")) {
-  snakemake <- list(
-    input  = list(
-      data     = list.files("Statistics/36_Kegg_merge_pathway_levels", "\\.tsv$", full.names = TRUE),
-      metadata = "metadata/metadata.xlsx"
-    ),
-    output = list(
-      pdf     = "Graphique/Barplot/Stackedbarplot.pdf",
-      parquet = "Data/Parquet/stackedbarplot.parquet"
-    ),
-    params = list(
-      mode        = "pathway",   # "pathway" | "taxonomy" | "organisms"
-      top_n       = 10L,
-      target_rank = "Phylum",    # used by taxonomy mode
-      taxon_rank  = 6L,          # used by organisms mode (index in ";"-split Taxonomy)
-      value_col   = "adj_standardization"  # numeric column to aggregate
-    )
-  )
-}
 
-setDTthreads(0L)
+# Inputs
+DATA        <- snakemake[["input"]][["data"]]
+METADATA    <- snakemake[["input"]][["metadata"]]
 
+# Outputs
+PDF     <- snakemake[["output"]][["pdf"]]
+PARQUET <- snakemake[["output"]][["parquet"]]
+
+# Parameters
 MODE        <- snakemake$params$mode
 TOP_N       <- as.integer(snakemake$params$top_n)
 VALUE_COL   <- snakemake$params$value_col
@@ -48,9 +35,6 @@ TARGET_RANK <- snakemake$params$target_rank          # taxonomy mode
 TAXON_RANK  <- as.integer(snakemake$params$taxon_rank) # organisms mode
 
 TAX_RANKS <- c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
-
-dir.create(dirname(snakemake$output$pdf),     recursive = TRUE, showWarnings = FALSE)
-dir.create(dirname(snakemake$output$parquet), recursive = TRUE, showWarnings = FALSE)
 
 # ==========================================================================
 # Helpers

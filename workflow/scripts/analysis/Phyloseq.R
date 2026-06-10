@@ -6,22 +6,19 @@ library(readxl)
 # ==========================================================================
 # Configuration (Snakemake)
 # ==========================================================================
-data_path     <- snakemake[["input"]][["data_dir"]]    # "Statistics/36_Kegg_merge_pathway_levels/"
-metadata_path <- snakemake[["input"]][["metadata"]]    # "metadata/metadata.xlsx"
-output_dir    <- snakemake[["output"]][["parquet_dir"]] # "Data/Parquet/phyloseq_tables/"
-
-dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
-setDTthreads(0L) # Maximize threads for data.table
+data      <- snakemake[["input"]][["data_dir"]]
+metadata  <- snakemake[["input"]][["metadata"]]
+rds_save  <- snakemake[["output"]][["rds"]]
 
 # ==========================================================================
 # 1. Data Import
 # ==========================================================================
 # Metadata
-meta_dt <- as.data.table(read_xlsx(metadata_path))
+meta_dt <- as.data.table(read_xlsx(metadata))
 setkey(meta_dt, sample_id)
 
 # KO Data - Fast multi-file loading
-files <- list.files(data_path, pattern = "annotated_.*\\.tsv", full.names = TRUE)
+files <- list.files(data, pattern = "annotated_.*\\.tsv", full.names = TRUE)
 
 df_list <- lapply(files, function(f) {
   # Fast ID extraction
@@ -65,8 +62,6 @@ ps_kegg <- phyloseq(
 )
 
 # --- Export to RDS ---
-# A better alternative to Parquet for using phyloseq in Shiny
-output_rds <- snakemake[["output"]][["rds"]]
-saveRDS(ps_kegg, output_rds)
+saveRDS(ps_kegg, rds_save)
 
-message("✓ Shiny-ready RDS object created.")
+message("✓ Phyloseq RDS object created.")

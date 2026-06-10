@@ -165,3 +165,25 @@ plots:
     pvalue_threshold : 0.05
     lfc_treshold : 1.3
 # ==========================================================================
+
+# try(snakemake, silent = TRUE)
+# if (!exists("snakemake")) {
+#   snakemake <- list(
+#     input   = list(
+#       parquet  = list.files("Statistics/5.Final_Intersection", "\\.parquet$", full.names = TRUE),
+#       metadata = "metadata/metadata.xlsx",
+#       physico  = "Physico-chimique/Thermophiles.xlsx"
+#     ),
+#     output  = list(
+#       pdf     = "Graphique/ACP/ACP_results.pdf",
+#       parquet = "Data/Parquet/pca_results.parquet",
+#       csv     = "Graphique/ACP/contributions.csv"
+#     ),
+#     params  = list(
+#       dim_x        = 1L,          # Dimension X (défaut 1)
+#       dim_y        = 2L,          # Dimension Y (défaut 2)
+#       physico_cols = c("pH", "AGV mg/l"),  # Colonnes physico à inclure
+#       n_top        = 10L          # Nombre de taxons top contributeurs
+#     )
+#   )
+# }

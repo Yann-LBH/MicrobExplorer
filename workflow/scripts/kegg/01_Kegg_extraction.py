@@ -45,7 +45,7 @@ def process_gff_kegg(input_path: str, output_path: str) -> int:
 
 # --- Exécution ---
 if __name__ == "__main__":
-    data = snakemake.input.gff, 
+    data = snakemake.input.gff
     extracted = snakemake.output.tsv
 
     n = process_gff_kegg(data, extracted)

@@ -14,14 +14,17 @@ library(arrow)
 # ==========================================================================
 # Configuration (Snakemake)
 # ==========================================================================
-# Inputs from Snakemake
-rds_files      <- snakemake@input[["rds_files"]]   # List of RDS files
-parquet_output <- snakemake@output[["parquet"]]   # Single parquet file path
-pdf_output     <- snakemake@output[["pdf"]]       # Single PDF file path
 
-# Thresholds from rule params
-padj_thresh <- snakemake@params[["padj"]] %||% 0.05
-lfc_thresh  <- snakemake@params[["lfc"]]  %||% 0
+# Inputs
+DESEQ_FILES <- snakemake[["input"]][["deseq_files"]]
+
+# Outputs
+PARQUET <- snakemake[["output"]][["parquet"]]   # Single parquet file path
+PDF     <- snakemake[["output"]][["pdf"]]       # Single PDF file path
+
+# Parameters
+PADJ_THRESH <- snakemake[["params"]][["padj"]] %||% 0.05
+LFC_THRESH  <- snakemake[["params"]][["lfc"]]  %||% 0
 
 # ==========================================================================
 # Processing & Plotting
@@ -29,9 +32,9 @@ lfc_thresh  <- snakemake@params[["lfc"]]  %||% 0
 all_results_dt <- list()
 
 # Open PDF device to capture all subsequent plots
-pdf(pdf_output, width = 10, height = 8)
+pdf(PDF, width = 10, height = 8)
 
-for (f in rds_files) {
+for (f in DESEQ_FILES) {
   dds <- readRDS(f)
   file_name <- basename(f)
   analysis_name <- sub("^(deseq2_)?(.*)\\.rds$", "\\2", file_name)
@@ -90,7 +93,7 @@ dev.off() # Close PDF
 # ==========================================================================
 # Combine all results into one table and save as Parquet
 final_dt <- rbindlist(all_results_dt)
-write_parquet(final_dt, parquet_output)
+write_parquet(final_dt, PARQUET)
 
-message("✓ PDF report generated: ", pdf_output)
-message("✓ Data exported to Parquet: ", parquet_output)
+message("✓ PDF report generated: ", PDF)
+message("✓ Data exported to Parquet: ", PARQUET)

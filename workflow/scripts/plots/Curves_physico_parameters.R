@@ -13,10 +13,16 @@ library(patchwork)
 library(viridis)
 library(arrow)
 
-# Snakemake variables
-input_file  <- snakemake[["input"]][["excel"]]
-output_pdf <- snakemake[["input"]][["pdf_dir"]]
-output_parquet <- snakemake[["input"]][["parquet"]]
+# ==========================================================================
+# Configuration Snakemake
+# ==========================================================================
+
+# Inputs
+PHYSICO <- snakemake[["input"]][["physico_params"]]
+
+#Outputs
+PDF <- snakemake[["output"]][["pdf"]]
+PARQUET <- snakemake[["output"]][["parquet"]]
 
 # ==========================================================================
 # Functions
@@ -80,7 +86,7 @@ plot_generation_loop <- function(data, var_y, var_moy, var_sd, label_y,
 # ==========================================================================
 
 # 1. Load data
-data_raw <- read_excel(input_file)
+data_raw <- read_excel(PHYSICO)
 fixed_cols <- c("date", "name", "condition", "commentaire")
 physicochemical_parameter <- setdiff(names(data_raw), fixed_cols)
 

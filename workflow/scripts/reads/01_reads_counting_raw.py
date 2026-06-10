@@ -32,8 +32,8 @@ def analyser_kaiju(path_in, path_out):
 # ==========================================================================
 if __name__ == "__main__":
 
-    path_in    = snakemake.input.raw_data
-    path_out      = snakemake.output.counted
+    path_in     = snakemake.input.raw_data
+    path_out    = snakemake.output.counted
     current     = snakemake.input.current_sample
 
     print(f"✓ Counting step passed -> {path_out}")

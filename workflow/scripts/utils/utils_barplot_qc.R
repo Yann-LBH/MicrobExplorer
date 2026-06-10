@@ -14,31 +14,21 @@ library(viridis)
 # ==========================================================================
 # Configuration Snakemake
 # ==========================================================================
-try(snakemake, silent = TRUE)
-if (!exists("snakemake")) {
-  snakemake <- list(
-    input  = list(tsv = "Report/Rapport_QC_Final.tsv"),
-    output = list(
-      pdf     = "Graphique/Barplot/QC/Barplot_Pertes_QC.pdf",
-      parquet = "Data/Parquet/qc_report.parquet"
-    ),
-    params = list(
-      ordre = c("Brut","P_Counted","P_Trimmed","P_RPKM","P_RPKM_Filtered","Intersection")
-    )
-  )
-}
 
-setDTthreads(0L)
+#Inputs
+DATA        <- snakemake[["input"]][["data"]]
 
-ordre_final <- snakemake$params$ordre
+#Ouputs
+PDF <- snakemake[["output"]][["pdf"]]
+PARQUET <- snakemake[["output"]][["parquet"]]
 
-dir.create(dirname(snakemake$output$pdf),     recursive = TRUE, showWarnings = FALSE)
-dir.create(dirname(snakemake$output$parquet), recursive = TRUE, showWarnings = FALSE)
+#Parameters
+ACTIVE_MODULES <- snakemake[["params"]][["active_modules"]]
 
 # ==========================================================================
 # 1. Chargement
 # ==========================================================================
-dt_raw <- fread(snakemake$input$tsv, sep = "|", strip.white = TRUE)
+dt_raw <- fread(DATA, sep = "|", strip.white = TRUE)
 
 # ==========================================================================
 # 2. Calcul des pertes — en place
@@ -56,7 +46,7 @@ dt_wide <- dt_raw[, .SD, .SDcols = c("Sample", ordre_final)]
 # ==========================================================================
 # 3. Parquet — format wide + long pour Shiny
 # ==========================================================================
-write_parquet(dt_wide, snakemake$output$parquet)
+write_parquet(dt_wide, PARQUET)
 
 # Format long pour le plot
 dt_plot <- melt(dt_wide,
@@ -114,9 +104,9 @@ p <- ggplot(dt_plot) +
   theme_classic() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-pdf(snakemake$output$pdf, width = 10, height = 7)
+pdf(PDF, width = 10, height = 7)
 print(p)
 dev.off()
 
-message("✓ PDF     : ", snakemake$output$pdf)
-message("✓ Parquet : ", snakemake$output$parquet)
+message("✓ PDF     : ", PDF)
+message("✓ Parquet : ", PARQUET)
