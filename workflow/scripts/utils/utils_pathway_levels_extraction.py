@@ -1,3 +1,11 @@
+################################################################################
+# Project : "MicrobExplorer"
+# Script: " utils Pathway levels extraction"
+# Author: "Yann Le Bihan"
+# Date: "2025-12-01"
+# Link : https://github.com/Yann-LBH/MicrobExplorer
+################################################################################
+
 import requests
 import pandas as pd
 import os
@@ -9,28 +17,25 @@ def get_kegg_hierarchy():
     Fetches and parses the KEGG hierarchy (ko00001) to extract 
     functional levels, EC numbers, and calculates KO weights.
     """
-    # Use the URL passed from the Snakemake rule params
+    # Retrieve the URL provided by the Snakemake execution context
     url = snakemake.params.url
-    
-    # English comment: Fetching data from KEGG REST API
-    response = requests.get(url)
-    response.raise_for_status()
-    content = response.text
     
     # Pre-compile regex patterns for significant speedup in loops
     re_clean_ab = re.compile(r'^[A-B\s]*\d+\s+')
-    re_pathway = re.compile(r'^\d+\s+(.*)\s*\[PATH:ko\d+\]')
-    re_ec = re.compile(r'\[EC:(.*?)\]')
+    re_pathway  = re.compile(r'^\d+\s+(.*)\s*\[PATH:ko\d+\]')
+    re_ec       = re.compile(r'\[EC:(.*?)\]')
     
+    # ✅ FIX: All networking logic is now properly wrapped inside the try block
     try:
-        # Increased timeout and robust request handling
+        print(f"Fetching data from KEGG API: {url}")
+        # Single robust request with mandatory timeout
         response = requests.get(url, timeout=30)
         response.raise_for_status()
         
         hierarchy_data = []
         l1, l2, l3 = "", "", ""
         
-        # Split text into lines once to avoid repeated split calls
+        # Split text into lines once to optimize iteration performance
         lines = response.text.splitlines()
 
         for line in lines:
@@ -48,16 +53,17 @@ def get_kegg_hierarchy():
                 match_c = re_pathway.search(line[3:])
                 l3 = match_c.group(1).strip() if match_c else line[3:].strip()
             elif prefix == 'D':
-                content = line[4:].strip()
+                # ✅ FIX: Isolated local variable name to prevent confusion
+                line_content = line[4:].strip()
                 
                 # Extract EC numbers if they exist
-                ec_match = re_ec.search(content)
+                ec_match = re_ec.search(line_content)
                 ec_val = ec_match.group(1) if ec_match else ""
                 
-                # Clean content for ID and Description
-                clean_content = re_ec.sub('', content).strip()
+                # Clean content for ID and Description extraction
+                clean_content = re_ec.sub('', line_content).strip()
                 
-                # Use maxsplit=1 for efficiency if we only care about the first ID
+                # Efficient split to capture KO identifier and its associated description
                 parts = clean_content.split(None, 1)
                 ko_id = parts[0]
                 ko_desc = parts[1] if len(parts) > 1 else ""
@@ -71,7 +77,7 @@ def get_kegg_hierarchy():
                     "gene_description": ko_desc
                 })
 
-        # --- DataFrame Optimization ---
+        # --- DataFrame Optimization & Scaling ---
         df = pd.DataFrame(hierarchy_data)
         
         # Calculate weight: 1 / frequency of KO across all pathways
@@ -88,22 +94,26 @@ def get_kegg_hierarchy():
         return None
 
 def main():
-    output_dir = "Statistics/pathway"
-    output_file = "pathway_levels_extracted.tsv"
+    # Dynamic path fetching from snakemake output if available, otherwise defaults to local
+    output_file = getattr(snakemake.output, "tsv", "Statistics/pathway/pathway_levels_extracted.tsv")
+    output_dir = os.path.dirname(output_file)
     
     print("Connecting to KEGG database...")
     kegg_df = get_kegg_hierarchy()
     
     if kegg_df is not None:
-        os.makedirs(output_dir, exist_ok=True)
-        path = os.path.join(output_dir, output_file)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
         
-        # Save to TSV
-        kegg_df.to_csv(path, sep='\t', index=False)
+        # Save results directly to the targeted file path
+        kegg_df.to_csv(output_file, sep='\t', index=False)
         
-        print(f"Successfully generated hierarchy: {path}")
+        print(f"✓ Successfully generated hierarchy: {output_file}")
         print(f"Total entries: {len(kegg_df)}")
         print(kegg_df.head(3))
+    else:
+        # Fail explicitly so Snakemake stops the execution flow
+        raise RuntimeError("KEGG hierarchy extraction failed. Review error logs above.")
 
 if __name__ == "__main__":
     main()

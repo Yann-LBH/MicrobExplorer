@@ -212,7 +212,8 @@ rule run_qc:
     output:
         parquet = pjoin(config["output_path"]["parquet"], "report_qc_data_{source}.parquet")
     params:
-        active_modules = lambda w: filter_active_sources(["reads", "contigs"])
+        steps_config   = lambda w: QC_STEPS[w.source],
+        active_modules = lambda w: filter_active_sources(config["datatypes"]["qc"])
     conda:  "../envs/py_env.yaml"
     script: "../scripts/utils/utils_qc_wrapper.py"
     
@@ -223,9 +224,9 @@ rule run_plot_qc:
         pdf     = pjoin(config["output_path"]["qc"], "qc", "Report_QC_final_{source}.pdf"),
         parquet = pjoin(config["output_path"]["parquet"], "report_qc_final_{source}.parquet")
     params:
-        active_modules = lambda w: filter_active_sources(["reads", "contigs"])
+        active_modules = lambda w: filter_active_sources(config["datatypes"]["qc"])
     conda:  "../envs/r_env.yaml"
-    script: "../scripts/utils/utils_baplot_qc.R"
+    script: "../scripts/utils/utils_barplot_qc.R"
 
 # ==========================================================================
 # READS — 3 étapes
@@ -305,7 +306,7 @@ rule contigs_rpkm:
 
 rule contigs_rpkm_filter:
     input:
-        data            = CONTIGS_TREATMENT + "3.RPKM/rpkm_{sample}_contigs.tsv", sample=SAMPLES)
+        data            = CONTIGS_TREATMENT + "3.RPKM/rpkm_{sample}_contigs.tsv"
     output:
         rpkm_filtered   = CONTIGS_TREATMENT + "4.RPKM_Filtered/rpkm_filtered_{sample}_contigs.tsv"
     params:
@@ -363,8 +364,7 @@ rule kegg_prepared_deseq2:
 
 rule kegg_standardization:
     input:
-        data            = KEGG_TREATMENT + "2.Intersected/intersected_{sample}_kegg.tsv",
-        current_sample  = KEGG_TREATMENT + "2.Intersected/intersected_{sample}_kegg.tsv"
+        data            = KEGG_TREATMENT + "2.Intersected/intersected_{sample}_kegg.tsv"
     output:
         stand           = KEGG_TREATMENT + "021.Standardized/standardized_{sample}_kegg.tsv"
     conda:   "../envs/py_env.yaml"

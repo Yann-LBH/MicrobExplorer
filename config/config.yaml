@@ -69,6 +69,7 @@ datatypes:
     deseq2:    ["contigs", "kegg"]
   heatmap: ["reads", "contigs"]
   volcano: ["contigs", "kegg"]
+  qc: ["reads", "contigs"]
 
 
 # General parameters

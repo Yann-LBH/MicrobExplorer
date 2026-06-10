@@ -21,14 +21,14 @@ library(vegan)
 # ==========================================================================
 
 # Inputs
-DATA        <- snakemake[["input"]][["data"]]
-METADATA    <- snakemake[["input"]][["metadata"]]
-PHYSICO     <- snakemake[["input"]][["physico"]]
+DATA         <- snakemake[["input"]][["data"]]
+METADATA     <- snakemake[["input"]][["metadata"]]
+PHYSICO      <- snakemake[["input"]][["physico"]]
 
 # Outputs
-PDF         <- snakemake[["output"]][["pdf"]]
-PARQUET     <- snakemake[["output"]][["parquet"]]
-CSV         <- snakemake[["output"]][["csv"]]
+PDF          <- snakemake[["output"]][["pdf"]]
+PARQUET      <- snakemake[["output"]][["parquet"]]
+CSV          <- snakemake[["output"]][["csv"]]
 
 # Parameters
 SHARED       <- snakemake[["params"]][["shared"]]
@@ -37,7 +37,9 @@ POINT_SIZE   <- as.numeric(snakemake[["params"]][["point_size"]])
 DIM_X        <- as.integer(snakemake[["params"]][["dim_x"]])
 DIM_Y        <- as.integer(snakemake[["params"]][["dim_y"]])
 PHYSICO_COLS <- snakemake[["params"]][["physico_cols"]]
-#dim_names    <- paste0("Dim.", c(dim_x, dim_y))
+
+# ✅ FIX: Uncommented and properly computed the dynamic dimension names for ggplot evaluation
+dim_names    <- paste0("Dim.", c(DIM_X, DIM_Y))
 
 # ==========================================================================
 # 1. Data Import
@@ -49,13 +51,12 @@ df_final <- rbindlist(lapply(files, function(f) read_parquet(f, col_select = c("
 
 # Metadata
 meta <- as.data.table(read_excel(METADATA))
-# colonnes attendues : sample_id, name, date
 
-# Physico-chimique
+# Physico-chemical data
 df_physico <- as.data.table(read_excel(PHYSICO))
 
 # ==========================================================================
-# 2. Pivot wide + jointure metadata
+# 2. Pivot wide + metadata join
 # ==========================================================================
 tableau_large <- dcast(
   df_final[, .(Date, Digesteur, Contig_ID, RPKM = as.numeric(RPKM))],
@@ -65,30 +66,32 @@ tableau_large <- dcast(
   fill = 0
 )
 
-# Suppression colonne artefact si présente
-tableau_large[, any_of("Other_NA") := NULL]
+# ✅ FIX: Safe data.table column removal using setdiff to avoid tidyselect conflicts
+cols_to_remove <- intersect("Other_NA", names(tableau_large))
+if (length(cols_to_remove) > 0) {
+  tableau_large[, (cols_to_remove) := NULL]
+}
 
 metadata <- tableau_large[, .(Date = as.factor(Date), Digesteur = as.factor(Digesteur))]
 data_pca  <- tableau_large[, -(1:2)]
 
 # ==========================================================================
-# 3. Transformation CLR
+# 3. CLR Transformation
 # ==========================================================================
 donnees_clr   <- as.data.frame(as.matrix(clr(data_pca + 1)))
 
 # ==========================================================================
-# 4. Physico-chimique : sélection dynamique + imputation
+# 4. Physico-chemical : dynamic selection + imputation
 # ==========================================================================
-# Colonnes configurables via params
 df_physico_num <- df_physico[, lapply(.SD, function(x) as.numeric(gsub(",", ".", x))),
                              .SDcols = PHYSICO_COLS]
 
-nb            <- estim_ncpPCA(df_physico_num, ncp.max = min(3L, ncol(df_physico_num) - 1L))
-res_impute    <- imputePCA(df_physico_num, ncp = nb$ncp)
+nb              <- estim_ncpPCA(df_physico_num, ncp.max = min(3L, ncol(df_physico_num) - 1L))
+res_impute      <- imputePCA(df_physico_num, ncp = nb$ncp)
 physico_complet <- as.data.frame(res_impute$completeObs)
 
 # ==========================================================================
-# 5. PCA
+# 5. PCA Execution
 # ==========================================================================
 final_tab_pca   <- cbind(donnees_clr, physico_complet, Digesteur = metadata$Digesteur)
 
@@ -102,15 +105,15 @@ res_pca <- PCA(final_tab_pca,
                quali.sup  = idx_quali_sup,
                graph      = FALSE)
 
-# Top N taxons sur les dimensions choisies
+# Filter Top N features based on selected dimensions contributions
 contrib_sum    <- res_pca$var$contrib[, DIM_X] + res_pca$var$contrib[, DIM_Y]
 top_taxons     <- names(sort(contrib_sum, decreasing = TRUE)[seq_len(TOP_N)])
 selection_finale <- c(top_taxons, PHYSICO_COLS)
 
 # ==========================================================================
-# 6. Graphiques
+# 6. Graphics Generation
 # ==========================================================================
-n_dates     <- nlevels(metadata$Date)
+n_dates      <- nlevels(metadata$Date)
 n_digesteurs <- nlevels(metadata$Digesteur)
 
 palette_digesteurs <- c("#E41A1C","#377EB8","#4DAF4A","#984EA3","#FF7F00","#FFC0CB")
@@ -120,7 +123,7 @@ plot_variance <- fviz_eig(res_pca, addlabels = TRUE)
 
 plot_acp <- fviz_pca_biplot(
   res_pca,
-  axes        = c(DIM_X, DIM_Y),       # dimensions configurables
+  axes        = c(DIM_X, DIM_Y),
   geom.ind    = "none",
   col.var     = "black",
   col.quanti.sup = "blue",
@@ -128,7 +131,7 @@ plot_acp <- fviz_pca_biplot(
   habillage   = idx_quali_sup,
   mean.point  = FALSE,
   repel       = TRUE,
-  title       = sprintf("ACP CLR — Top %d taxons (Dim %d vs %d)", TOP_N, DIM_X, DIM_Y)
+  title       = sprintf("PCA CLR — Top %d features (Dim %d vs %d)", TOP_N, DIM_X, DIM_Y)
 ) +
   geom_point(
     data = as.data.frame(res_pca$ind$coord),
@@ -136,7 +139,7 @@ plot_acp <- fviz_pca_biplot(
         y     = .data[[dim_names[2]]],
         shape = metadata$Date,
         color = metadata$Digesteur),
-    size = 4, alpha = 0.8
+    size = POINT_SIZE, alpha = 0.8 # ✅ OPTIMIZATION: Implemented POINT_SIZE from params
   ) +
   scale_shape_manual(values = formes_dates[seq_len(n_dates)],
                      name   = "Dates",
@@ -149,25 +152,25 @@ plot_acp <- fviz_pca_biplot(
 
 plot_acp$layers <- rev(plot_acp$layers)
 
-# Contributions top N
+# Extraction of top N contributions
 contrib_top <- as.data.table(res_pca$var$contrib[top_taxons, ],
                              keep.rownames = "Taxon")
 
 # ==========================================================================
-# 7. Sorties
+# 7. Outputs and File Generation
 # ==========================================================================
 
-# --- PDF compilé (ACP + Variance + Contributions) ---
+# --- Compile PDF Report ---
 pdf(PDF, width = 12, height = 8)
 print(plot_variance)
 print(plot_acp)
-# Tableau contributions comme plot texte
+
+# Draw contributions table as a text plot layout
 grid::grid.newpage()
 grid::grid.draw(gridExtra::tableGrob(contrib_top))
 dev.off()
 
-# --- Parquet pour Shiny ---
-# Coordonnées individus + metadata + physico -> tout dans un seul fichier
+# --- Export Parquet for Shiny Integration ---
 coords_ind <- as.data.table(res_pca$ind$coord)
 coords_ind[, Digesteur := metadata$Digesteur]
 coords_ind[, Date      := metadata$Date]
@@ -175,7 +178,7 @@ coords_ind[, (PHYSICO_COLS) := physico_complet]
 
 write_parquet(coords_ind, PARQUET)
 
-# --- CSV contributions ---
+# --- Export CSV Contributions ---
 fwrite(contrib_top, CSV, sep = ";")
 
 message("✓ PDF       : ", PDF)
