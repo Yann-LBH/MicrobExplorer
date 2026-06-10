@@ -414,7 +414,7 @@ rule plot_stackedbarplot:
         target_rank = config["plots"]["stackedbarplot"]["taxon_rank"],
         value_col   = lambda w: PLOT_PARAMS[w.source]["value_col"]
     conda:  "../envs/r_env.yaml"
-    script: "../scripts/plots/Stackedbarplot_unified.R"
+    script: "../scripts/plots/Stackedbarplot_abundance.R"
 
 rule plot_heatmap:
     input:
