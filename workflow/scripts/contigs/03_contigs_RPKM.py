@@ -8,6 +8,7 @@
 
 import pandas as pd
 
+
 def calculate_rpkm(PATH_IN: str, PATH_OUT: str) -> int:
     """
     Calcul the contigs RPKM
@@ -32,12 +33,15 @@ def calculate_rpkm(PATH_IN: str, PATH_OUT: str) -> int:
     df.to_csv(PATH_OUT, sep="\t", index=False)
     return len(df)
 
+
 # --- Exécution ---
 if __name__ == "__main__":
 
-    PATH_IN  = snakemake.input.data
+    PATH_IN = snakemake.input.data
     PATH_OUT = snakemake.output.rpkm
 
     n_rows = calculate_rpkm(PATH_IN, PATH_OUT)
-    
-    print(f"✓ CONTIGS : RPKM step passed successfully -> {n_rows} contigs processed -> {PATH_OUT}")
+
+    print(
+        f"✓ CONTIGS : RPKM step passed successfully -> {n_rows} contigs processed -> {PATH_OUT}"
+    )

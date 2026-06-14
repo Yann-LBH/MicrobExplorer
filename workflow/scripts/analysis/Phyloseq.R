@@ -6,9 +6,9 @@ library(readxl)
 # ==========================================================================
 # Configuration (Snakemake)
 # ==========================================================================
-data      <- snakemake[["input"]][["data_dir"]]
-metadata  <- snakemake[["input"]][["metadata"]]
-rds_save  <- snakemake[["output"]][["rds"]]
+data <- snakemake[["input"]][["data_dir"]]
+metadata <- snakemake[["input"]][["metadata"]]
+rds_save <- snakemake[["output"]][["rds"]]
 
 # ==========================================================================
 # 1. Data Import
@@ -23,8 +23,10 @@ files <- list.files(data, pattern = "annotated_.*\\.tsv", full.names = TRUE)
 df_list <- lapply(files, function(f) {
   # Fast ID extraction
   sample_nm <- gsub("annotated_agreg_|\\.tsv", "", basename(f))
-  dt <- fread(f, select = c("ko", "standardization", "ec_number", 
-                            "level_1", "level_2", "level_3", "gene_description"))
+  dt <- fread(f, select = c(
+    "ko", "standardization", "ec_number",
+    "level_1", "level_2", "level_3", "gene_description"
+  ))
   dt[, sample_id := sample_nm]
   return(dt)
 })
@@ -37,10 +39,11 @@ all_kos <- rbindlist(df_list)
 
 # --- A. OTU TABLE (Counts per KO) ---
 # Data.table dcast is significantly faster than pivot_wider
-otu_dt <- dcast(all_kos, ko ~ sample_id, 
-                value.var = "standardization", 
-                fun.aggregate = sum, 
-                fill = 0)
+otu_dt <- dcast(all_kos, ko ~ sample_id,
+  value.var = "standardization",
+  fun.aggregate = sum,
+  fill = 0
+)
 
 otu_mat <- as.matrix(otu_dt, rownames = "ko")
 

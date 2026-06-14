@@ -6,49 +6,60 @@
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
-library(phyloseq)
-library(ggplot2)
+# Libraries CRAN
 library(data.table)
+library(ggplot2)
 library(viridis)
 library(arrow)
+library(purrr)
 
-# Load helpers
-source("scripts/plots/utils_Barplot_DESeq2.R")
+# Libraries Bioconductor
+library(phyloseq)
+
+# Load helper
+helper_path <- dirname(snakemake@scriptdir)
+source(file.path(helper_path, "utils", "utils_Barplot_DESeq2.R"))
 
 # ==========================================================================
 # Configuration (Snakemake)
 # ==========================================================================
 
 # Input
-DESEQ_FILES   <- snakemake[["input"]][["deseq_files"]]
-PHYLOSEQ_OBJ       <- snakemake[["input"]][["phyloseq_obj"]]
-METADATA      <- snakemake[["input"]][["metadata"]]
+DESEQ_FILES <- snakemake[["input"]][["deseq_files"]]
+PHYLOSEQ_OBJ <- snakemake[["input"]][["phyloseq_obj"]]
+METADATA <- snakemake[["input"]][["metadata"]]
 
 # Output
-PDF     <- snakemake[["output"]][["pdf"]]
+PDF <- snakemake[["output"]][["pdf"]]
 PARQUET <- snakemake[["output"]][["parquet"]]
 
 # Thresholds from config/params
+TITLE <- snakemake@params[["title"]] %||% "Top N Features Differentially Abundant"
+SUBTITLE <- snakemake@params[["subtitle"]] %||% "DESeq2 Results"
 PADJ_THRESHOLD <- snakemake@params[["padj"]] %||% 0.05
-LFC_THRESH     <- snakemake@params[["lfc"]] %||% 0
-CONTRASTS_LIST <- snakemake@params[["contrasts"]]  # e.g., ["ref", "date", "combo"]
+LFC_THRESH <- snakemake@params[["lfc"]] %||% 0
+CONTRASTS_LIST <- snakemake@params[["contrasts"]] # e.g., ["ref", "date", "combo"]
+TOP_N <- snakemake@params[["top_n"]] %||% 10
 
 # ==========================================================================
 # 1. Data Loading
 # ==========================================================================
 message("Loading data...")
-message(sprintf("  → DESeq2 contrasts configured: %s", paste(CONTRASTS_LIST, collapse=", ")))
+message(sprintf("  → DESeq2 contrasts configured: %s", paste(CONTRASTS_LIST, collapse = ", ")))
 
 # Load DESeq2 results dynamically from file list
 deseq_paths <- list()
-for (i in seq_along(DESEQ_FILES)) {
-  file_path <- DESEQ_FILES[[i]]
-  # Extract contrast type from filename (e.g., "deseq2_ref_contigs.rds" → "ref")
-  contrast_name <- gsub(".*deseq2_([^_]+)_.*", "\\1", basename(file_path))
-  deseq_paths[[contrast_name]] <- file_path
-}
+files_vector <- unlist(DESEQ_FILES)
 
-message(sprintf("  → Found %d files: %s", length(deseq_paths), paste(names(deseq_paths), collapse=", ")))
+deseq_paths <- lapply(files_vector, function(file_path) {
+  return(file_path)
+})
+
+# Extract contrast names systematically using regex matching on filenames
+contrast_keys <- gsub(".*deseq2_([^_]+)_.*", "\\1", basename(files_vector))
+names(deseq_paths) <- contrast_keys
+
+message(sprintf("  → Found %d files: %s", length(deseq_paths), paste(names(deseq_paths), collapse = ", ")))
 
 results_list <- load_deseq2_results(deseq_paths)
 
@@ -57,8 +68,10 @@ ps <- readRDS(PHYLOSEQ_OBJ)
 ps_rel <- transform_sample_counts(ps, function(x) x / sum(x))
 df_abundance <- phyloseq_to_dt(ps_rel)
 
-message(sprintf("✓ Loaded phyloseq object: %d OTUs, %d samples", 
-                nrow(otu_table(ps)), ncol(otu_table(ps))))
+message(sprintf(
+  "✓ Loaded phyloseq object: %d OTUs, %d samples",
+  nrow(otu_table(ps)), ncol(otu_table(ps))
+))
 
 # ==========================================================================
 # 2. Generate Plots for Each Contrast
@@ -68,62 +81,65 @@ pdf(PDF, width = 14, height = 10)
 contrast_names <- names(results_list)
 
 for (contrast_type in contrast_names) {
-  
   deseq_result <- results_list[[contrast_type]]
   message(sprintf("\nProcessing %s contrast...", contrast_type))
-  
-  # Get significant features (up-regulated)
+
+  # linked to utils_Barplot_DESeq2.R function to prepare data for plotting
   sig_up <- get_significant_features(deseq_result, PADJ_THRESHOLD, LFC_THRESH, "up")
-  
+
   if (length(sig_up) > 0) {
     message(sprintf("  → %d up-regulated features", length(sig_up)))
-    
-    # Prepare plot data
-    df_plot_up <- prepare_plot_data(df_abundance, sig_up, top_n = 10)
-    
+
+    # linked to utils_Barplot_DESeq2.R function to prepare data for plotting
+    df_plot_up <- prepare_plot_data(df_abundance, sig_up, TOP_N = TOP_N)
+
+    # DYNAMIC PARSING: Combine contrast tags and configuration keys into labels
+    resolved_title <- sprintf(CUSTOM_TITLE, toupper(contrast_type))
+    resolved_subtitle <- sprintf(CUSTOM_SUBTITLE, PADJ_THRESHOLD, LFC_THRESH)
+
     # Create and print plot
     p_up <- create_stackedbarplot(
       df_plot_up,
-      title = sprintf("Over-represented Features - %s Contrast", 
-                      toupper(contrast_type)),
-      subtitle = sprintf("Padj < %g | LogFC > %g", PADJ_THRESHOLD, LFC_THRESH)
+      title = resolved_title,
+      subtitle = resolved_subtitle,
+      TOP_N = TOP_N
     )
-    
+
     print(p_up)
   }
-  
+
   # Get significant features (down-regulated)
   sig_down <- get_significant_features(deseq_result, PADJ_THRESHOLD, LFC_THRESH, "down")
-  
+
   if (length(sig_down) > 0) {
     message(sprintf("  → %d down-regulated features", length(sig_down)))
-    
-    # Prepare plot data
-    df_plot_down <- prepare_plot_data(df_abundance, sig_down, top_n = 10)
-    
-    # Create and print plot
+
+    # linked to utils_Barplot_DESeq2.R function to prepare data for plotting
+    df_plot_down <- prepare_plot_data(df_abundance, sig_down, TOP_N = TOP_N)
+
+    # DYNAMIC PARSING: Combine contrast tags and configuration keys into labels
+    resolved_title_down <- sprintf(CUSTOM_TITLE, toupper(contrast_type))
+    resolved_subtitle_down <- sprintf(CUSTOM_SUBTITLE, PADJ_THRESHOLD, -LFC_THRESH)
+
     p_down <- create_stackedbarplot(
       df_plot_down,
-      title = sprintf("Under-represented Features - %s Contrast", 
-                      toupper(contrast_type)),
-      subtitle = sprintf("Padj < %g | LogFC < -%g", PADJ_THRESHOLD, LFC_THRESH)
+      title        = resolved_title_down,
+      subtitle     = resolved_subtitle_down,
+      TOP_N        = TOP_N
     )
-    
     print(p_down)
   }
-  
+
   if (length(sig_up) == 0 && length(sig_down) == 0) {
     message(sprintf("  → No significant features found with padj < %g", PADJ_THRESHOLD))
   }
 }
 
 dev.off()
-
-message(sprintf("\n✓ PDF generated: %s", PDF))
+message(sprintf("\n✓ PDF : Stackedbarplot from DESeq2 Successfully generated.", PDF))
 
 # ==========================================================================
 # 3. Export Results
 # ==========================================================================
 export_results(df_abundance, PARQUET)
-
-message("\n✓ Processing complete!")
+message("\n✓ PARQUET : Stackedbarplot from DESeq2 Successfully generated.")

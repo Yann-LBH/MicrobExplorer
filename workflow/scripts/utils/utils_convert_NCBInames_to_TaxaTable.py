@@ -7,13 +7,24 @@ try:
     snakemake
 except NameError:
     snakemake = SimpleNamespace(
-        input  = SimpleNamespace(zip="data/taxonomy/new_taxdump.zip"),
-        output = SimpleNamespace(csv="data/taxonomy/mapping_taxons.csv"),
-        params = SimpleNamespace(dmp_name="rankedlineage.dmp")
+        input=SimpleNamespace(zip="data/taxonomy/new_taxdump.zip"),
+        output=SimpleNamespace(csv="data/taxonomy/mapping_taxons.csv"),
+        params=SimpleNamespace(dmp_name="rankedlineage.dmp"),
     )
 
-HEADER = ["tax_id", "scientific_name", "domain", "kingdom",
-          "phylum", "class", "order", "family", "genus", "species"]
+HEADER = [
+    "tax_id",
+    "scientific_name",
+    "domain",
+    "kingdom",
+    "phylum",
+    "class",
+    "order",
+    "family",
+    "genus",
+    "species",
+]
+
 
 def extract_taxonomy(zip_path: str, dmp_name: str, out_path: str) -> int:
     """
@@ -21,9 +32,9 @@ def extract_taxonomy(zip_path: str, dmp_name: str, out_path: str) -> int:
     Retourne le nombre de lignes écrites.
     """
     n = 0
-    with zipfile.ZipFile(zip_path) as z, \
-         z.open(dmp_name) as f_in, \
-         open(out_path, "w", encoding="utf-8", newline="") as f_out:
+    with zipfile.ZipFile(zip_path) as z, z.open(dmp_name) as f_in, open(
+        out_path, "w", encoding="utf-8", newline=""
+    ) as f_out:
 
         writer = csv.writer(f_out, delimiter=";")
         writer.writerow(HEADER)
@@ -33,7 +44,7 @@ def extract_taxonomy(zip_path: str, dmp_name: str, out_path: str) -> int:
             if len(parts) < 10:
                 continue
 
-            parts = [p.strip().replace('"', '') for p in parts]
+            parts = [p.strip().replace('"', "") for p in parts]
             tax_id, sci_name = parts[0], parts[1]
 
             # Rangs NCBI ordre inversé (species→kingdom), index 2-9
@@ -48,11 +59,12 @@ def extract_taxonomy(zip_path: str, dmp_name: str, out_path: str) -> int:
 
     return n
 
+
 # --- Exécution ---
 if __name__ == "__main__":
     n = extract_taxonomy(
-        zip_path = snakemake.input.zip,
-        dmp_name = snakemake.params.dmp_name,
-        out_path = snakemake.output.csv
+        zip_path=snakemake.input.zip,
+        dmp_name=snakemake.params.dmp_name,
+        out_path=snakemake.output.csv,
     )
     print(f"✓ {n} taxons extraits -> {snakemake.output.csv}")

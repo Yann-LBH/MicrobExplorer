@@ -8,16 +8,19 @@
 
 import pandas as pd
 
+
 def load_taxonomy(TAXONOMY: str) -> pd.Series:
     """
     Loads the taxonomy file.
     Expected format: [0] Class | [1] ID | [2] TaxID | [3] Lineage
     Returns a pandas Series indexed by Contig_ID.
     """
-    df = pd.read_csv(TAXONOMY, sep="\t", header=None,
-                     usecols=[1, 3], names=["Contig_ID", "Lineage"])
+    df = pd.read_csv(
+        TAXONOMY, sep="\t", header=None, usecols=[1, 3], names=["Contig_ID", "Lineage"]
+    )
     df["Lineage"] = df["Lineage"].str.rstrip(";")
     return df.set_index("Contig_ID")["Lineage"]
+
 
 def run_annotation(PATH_IN: str, PATH_OUT: str, taxonomy: pd.Series) -> int:
     """
@@ -33,14 +36,19 @@ def run_annotation(PATH_IN: str, PATH_OUT: str, taxonomy: pd.Series) -> int:
 
     return len(df)
 
+
 # --- Exécution ---
 if __name__ == "__main__":
-    PATH_IN     = snakemake.input.data
-    PATH_OUT    = snakemake.output.taxaname
-    TAXONOMY    = snakemake.input.taxonomy
+    PATH_IN = snakemake.input.data
+    PATH_OUT = snakemake.output.taxaname
+    TAXONOMY = snakemake.input.taxonomy
 
     taxonomy = load_taxonomy(TAXONOMY)
 
     n_kept = run_annotation(PATH_IN, PATH_OUT, taxonomy)
-    
-    print(f"✓ CONTIGS : Taxonomy annotation step passed successfully -> {n_kept} contigs annotated -> {PATH_OUT}")
+
+    print(
+        f"✓ CONTIGS : Taxonomy annotation step passed successfully "
+        f"-> {n_kept} contigs annotated "
+        f"-> {PATH_OUT}"
+    )

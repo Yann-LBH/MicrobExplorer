@@ -6,10 +6,10 @@
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
-
 import pandas as pd
 
 REQUIRED_COLS = {"Reads_Mapped", "gene_length", "Length"}
+
 
 def calculer_score_kegg(PATH_IN: str, PATH_OUT: str) -> int:
     """
@@ -27,12 +27,17 @@ def calculer_score_kegg(PATH_IN: str, PATH_OUT: str) -> int:
 
     return len(df)
 
+
 # --- Exécution ---
 if __name__ == "__main__":
 
-    PATH_IN     = snakemake.input.data
-    PATH_OUT    = snakemake.output.stand
+    PATH_IN = snakemake.input.data
+    PATH_OUT = snakemake.output.stand
 
     n = calculer_score_kegg(PATH_IN, PATH_OUT)
-    
-    print(f"✓ KEGG : Standardization step passed successfully -> {n} lines processed -> {PATH_OUT}")
+
+    print(
+        f"✓ KEGG : Standardization step passed successfully "
+        f"-> {n} lines processed "
+        f"-> {PATH_OUT}"
+    )

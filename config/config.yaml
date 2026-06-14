@@ -32,11 +32,11 @@ input_path:
   gff3: "data/gff3"
 
 output_path:
-  treatment: "../results/treatment/"
-  plots: "../results/plots/"
-  rds: "../results/rds/"
-  parquet: "../results/parquet/"
-  qc: "../results/qc/"
+  treatment: "results/treatment/"
+  plots: "results/plots/"
+  rds: "results/rds/"
+  parquet: "results/parquet/"
+  qc: "results/qc/"
 # ==========================================================================
 
 # ==========================================================================
@@ -146,7 +146,9 @@ plots:
     taxon_rank: "Class"
 
   stackedbarplot:
-    top_n: 19
+    title: "Top 10 taxons differentially abundant"
+    subtitle: "DESeq2 results"
+    top_n: 10
     taxon_rank: "Class"
 
   pca:

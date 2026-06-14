@@ -9,8 +9,9 @@
 import re
 
 # Pré-compilation regex — justifié car appelée sur chaque ligne
-KEGG_PATTERN = re.compile(r'K\d{5}')
+KEGG_PATTERN = re.compile(r"K\d{5}")
 HEADER = ["contig", "kegg", "gene_length"]
+
 
 def process_gff_kegg(PATH_IN: str, PATH_OUT: str) -> int:
     """
@@ -19,8 +20,7 @@ def process_gff_kegg(PATH_IN: str, PATH_OUT: str) -> int:
     """
     count = 0
 
-    with open(PATH_IN, "r") as f_in, \
-         open(PATH_OUT, "w", newline="") as f_out:
+    with open(PATH_IN, "r") as f_in, open(PATH_OUT, "w", newline="") as f_out:
 
         f_out.write("\t".join(HEADER) + "\n")
 
@@ -43,6 +43,7 @@ def process_gff_kegg(PATH_IN: str, PATH_OUT: str) -> int:
 
     return count
 
+
 # --- Exécution ---
 if __name__ == "__main__":
 
@@ -51,4 +52,8 @@ if __name__ == "__main__":
 
     n = process_gff_kegg(PATH_IN, PATH_OUT)
 
-    print(f"✓ KEGG : Extraction step passed successfully -> {n} annotations extracted -> {PATH_OUT}")
+    print(
+        f"✓ KEGG : Extraction step passed successfully "
+        f"-> {n} annotations extracted "
+        f"-> {PATH_OUT}"
+    )

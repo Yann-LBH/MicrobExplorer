@@ -2,7 +2,6 @@ channels:
   - conda-forge
   - bioconda
   - r
-
 dependencies:
   - r-base=4.3.1
   - bioconductor-deseq2=1.40.0
@@ -12,7 +11,7 @@ dependencies:
   - r-data.table=1.18.2.1
   - r-readxl=1.4.5
   - r-circlize=0.4.18
-  - r-viridis=0.6.5
+  - r-viridislite=0.6.5
   - r-vegan=2.7-3
   - r-arrow=23.0.1.2
   - r-ggrepel=0.9.8
@@ -21,3 +20,5 @@ dependencies:
   - r-factominer=2.13
   - r-compositions=2.0-9
   - r-missmda=1.21
+  - r-purrr=1.2.2
+  - r-readr=2.1.4

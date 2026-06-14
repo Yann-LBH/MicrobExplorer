@@ -12,17 +12,21 @@ FILL_VALUES = {
     "level_1": "Unassigned",
     "level_2": "Unassigned",
     "level_3": "Unassigned",
-    "weight":  0
+    "weight": 0,
 }
+
 
 def load_reference(PATHWAY: str) -> pd.DataFrame:
     """Charge et prépare la table de référence KEGG."""
     ref = pd.read_csv(PATHWAY, sep="\t")
     ref.columns = ref.columns.str.strip()
     ref["ko"] = ref["ko"].astype(str).str.replace("ko:", "", regex=False)
-    ref[["level_1", "level_2", "level_3"]] = ref[["level_1", "level_2", "level_3"]].fillna("Unassigned")
+    ref[["level_1", "level_2", "level_3"]] = ref[
+        ["level_1", "level_2", "level_3"]
+    ].fillna("Unassigned")
     ref["weight"] = ref["weight"].fillna(0)
     return ref
+
 
 def annotate_with_hierarchy(PATH_IN: str, ref: pd.DataFrame, PATH_OUT: str) -> int:
     """
@@ -46,14 +50,19 @@ def annotate_with_hierarchy(PATH_IN: str, ref: pd.DataFrame, PATH_OUT: str) -> i
 
     return len(merged)
 
+
 # --- Exécution ---
 if __name__ == "__main__":
 
-    PATH_IN     = snakemake.input.data
-    PATH_OUT    = snakemake.output.taxname
-    PATHWAY     = snakemake.input.pathway
+    PATH_IN = snakemake.input.data
+    PATH_OUT = snakemake.output.taxname
+    PATHWAY = snakemake.input.pathway
 
     ref = load_reference(PATHWAY)
-    n   = annotate_with_hierarchy(PATH_IN, ref, PATH_OUT)
-    
-    print(f"✓ KEGG : Merge step passed successfully -> {n} lines annotated -> {PATH_OUT}")
+    n = annotate_with_hierarchy(PATH_IN, ref, PATH_OUT)
+
+    print(
+        f"✓ KEGG : Merge step passed successfully "
+        f"-> {n} lines annotated "
+        f"-> {PATH_OUT}"
+    )

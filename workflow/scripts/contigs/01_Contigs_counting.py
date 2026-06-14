@@ -8,10 +8,12 @@
 
 import pandas as pd
 
+
 # --- Filtering ---
 def filter_contigs(PATH_IN: str, PATH_OUT: str, THRESHOLD: int) -> int:
     """
-    Reads the input, filters based on `contig_length` >= `threshold`, and writes the output to a TSV file.
+    Reads the input, filters based on `contig_length` >= `threshold`,
+    and writes the output to a TSV file.
     Returns the number of retained contigs.
     """
     df = pd.read_csv(PATH_IN, sep="\t", dtype={"contig_length": int})
@@ -21,12 +23,17 @@ def filter_contigs(PATH_IN: str, PATH_OUT: str, THRESHOLD: int) -> int:
     df_filtered.to_csv(PATH_OUT, sep="\t", index=False)
     return len(df_filtered)
 
+
 # --- Execution ---
 if __name__ == "__main__":
 
-    PATH_IN   = snakemake.input.raw_data
-    PATH_OUT  = snakemake.output.counted
+    PATH_IN = snakemake.input.raw_data
+    PATH_OUT = snakemake.output.counted
     THRESHOLD = int(snakemake.params.length_threshold)
 
     n_kept = filter_contigs(PATH_IN, PATH_OUT, THRESHOLD)
-    print(f"✓ CONTIGS : Counting step passed successfully -> {n_kept} contigs kept (threshold={THRESHOLD}) -> {PATH_OUT}")
+    print(
+        f"✓ CONTIGS : Counting step passed successfully "
+        f"-> {n_kept} contigs kept (threshold={THRESHOLD}) "
+        f"-> {PATH_OUT}"
+    )

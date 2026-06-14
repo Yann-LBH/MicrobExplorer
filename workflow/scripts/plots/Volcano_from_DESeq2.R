@@ -19,12 +19,12 @@ library(arrow)
 DESEQ_FILES <- snakemake[["input"]][["deseq_files"]]
 
 # Outputs
-PARQUET <- snakemake[["output"]][["parquet"]]   # Single parquet file path
-PDF     <- snakemake[["output"]][["pdf"]]       # Single PDF file path
+PARQUET <- snakemake[["output"]][["parquet"]] # Single parquet file path
+PDF <- snakemake[["output"]][["pdf"]] # Single PDF file path
 
 # Parameters
 PADJ_THRESH <- snakemake[["params"]][["padj"]] %||% 0.05
-LFC_THRESH  <- snakemake[["params"]][["lfc"]]  %||% 0
+LFC_THRESH <- snakemake[["params"]][["lfc"]] %||% 0
 
 # ==========================================================================
 # Processing & Plotting
@@ -42,22 +42,22 @@ for (f in DESEQ_FILES) {
   if (grepl("_(ref|date|combo)(?:_.*)?\\.rds$", file_name)) {
     contrast_label <- sub(".*_(ref|date|combo)(?:_.*)?\\.rds$", "\\1", file_name)
   }
-  
+
   process_result <- function(res, contrast) {
     res <- as.data.table(as.data.frame(res), keep.rownames = "KO_Number")
     res[, `:=`(Analysis = analysis_name, Contrast = contrast)]
     res[, Color_Status := "Non Significatif"]
-    res[padj <= padj_thresh & log2FoldChange >= lfc_thresh, Color_Status := "Sur"]
-    res[padj <= padj_thresh & log2FoldChange <= -lfc_thresh, Color_Status := "Sous"]
+    res[padj <= PADJ_THRESH & log2FoldChange >= LFC_THRESH, Color_Status := "Sur"]
+    res[padj <= PADJ_THRESH & log2FoldChange <= -LFC_THRESH, Color_Status := "Sous"]
     res[, Label := ""]
     setorder(res, padj, na.last = TRUE)
-    res[padj <= padj_thresh][1:10, Label := KO_Number]
+    res[padj <= PADJ_THRESH][1:10, Label := KO_Number]
     all_results_dt[[paste0(analysis_name, "_", contrast)]] <<- res
-    
+
     p <- ggplot(res, aes(x = log2FoldChange, y = -log10(padj), color = Color_Status)) +
       geom_point(alpha = 0.4, size = 1.2) +
-      geom_vline(xintercept = c(-lfc_thresh, lfc_thresh), linetype = "dashed", alpha = 0.5) +
-      geom_hline(yintercept = -log10(padj_thresh), linetype = "dashed", alpha = 0.5) +
+      geom_vline(xintercept = c(-LFC_THRESH, LFC_THRESH), linetype = "dashed", alpha = 0.5) +
+      geom_hline(yintercept = -log10(PADJ_THRESH), linetype = "dashed", alpha = 0.5) +
       geom_text_repel(aes(label = Label), size = 3, fontface = "bold", max.overlaps = 15) +
       scale_color_manual(
         values = c("Sur" = "forestgreen", "Sous" = "firebrick3", "Non Significatif" = "black")
@@ -65,13 +65,13 @@ for (f in DESEQ_FILES) {
       theme_minimal() +
       labs(
         title = paste("Analysis:", analysis_name),
-        subtitle = paste("Contrast:", contrast, "| padj <=", padj_thresh),
+        subtitle = paste("Contrast:", contrast, "| padj <=", PADJ_THRESH),
         x = "Log2 Fold Change",
         y = "-log10(adj. P-value)"
       )
     print(p)
   }
-  
+
   if (inherits(dds, "DESeqDataSet")) {
     contrasts <- resultsNames(dds)
     contrasts <- contrasts[contrasts != "Intercept"]

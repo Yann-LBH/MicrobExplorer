@@ -8,6 +8,7 @@
 
 import pandas as pd
 
+
 def intersection_kegg(PATH_IN: str, COUNTS: str, PATH_OUT: str) -> int:
     """
     Jointure inner entre les annotations KEGG et les counts d'un échantillon.
@@ -23,7 +24,9 @@ def intersection_kegg(PATH_IN: str, COUNTS: str, PATH_OUT: str) -> int:
     if "Contig_ID" not in df_counts.columns:
         raise KeyError(f"Colonne 'Contig_ID' manquante dans {COUNTS}")
 
-    df_out = df_counts.merge(df_kegg, left_on="Contig_ID", right_on="contig", how="inner")
+    df_out = df_counts.merge(
+        df_kegg, left_on="Contig_ID", right_on="contig", how="inner"
+    )
 
     if df_out.empty:
         print(f"⚠️ Aucun contig commun pour {COUNTS}")
@@ -31,12 +34,17 @@ def intersection_kegg(PATH_IN: str, COUNTS: str, PATH_OUT: str) -> int:
     df_out.to_csv(PATH_OUT, sep="\t", index=False)
     return len(df_out)
 
+
 # --- Exécution ---
 if __name__ == "__main__":
 
-    PATH_IN   = snakemake.input.data
+    PATH_IN = snakemake.input.data
     COUNTS = snakemake.input.counted
     PATH_OUT = snakemake.output.intersec
- 
+
     n = intersection_kegg(PATH_IN, COUNTS, PATH_OUT)
-    print(f"✓ KEGG : Intersection step passed successfully -> {n} contigs in intersection -> {PATH_OUT}")
+    print(
+        f"✓ KEGG : Intersection step passed successfully "
+        f"-> {n} contigs in intersection "
+        f"-> {PATH_OUT}"
+    )

@@ -8,6 +8,7 @@
 
 import pandas as pd
 
+
 def agreger_par_ko(PATH_IN: str, PATH_OUT: str) -> int:
     """
     Agrège par code KEGG en sommant la colonne 'standardization'.
@@ -24,6 +25,7 @@ def agreger_par_ko(PATH_IN: str, PATH_OUT: str) -> int:
 
     return len(df_ko)
 
+
 # --- Exécution ---
 if __name__ == "__main__":
 
@@ -31,5 +33,9 @@ if __name__ == "__main__":
     PATH_OUT = snakemake.output.agreg
 
     n = agreger_par_ko(PATH_IN, PATH_OUT)
-    
-    print(f"✓ KEGG : Aggregation step passed successfully -> {n} unique KOs -> {PATH_OUT}")
+
+    print(
+        f"✓ KEGG : Aggregation step passed successfully "
+        f"-> {n} unique KOs "
+        f"-> {PATH_OUT}"
+    )
