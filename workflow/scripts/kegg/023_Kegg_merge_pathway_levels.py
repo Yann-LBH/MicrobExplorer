@@ -6,7 +6,16 @@
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
+import os
+import logging
 import pandas as pd
+
+# Configure logging to display time, level, and message properly
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 FILL_VALUES = {
     "level_1": "Unassigned",
@@ -59,10 +68,19 @@ if __name__ == "__main__":
     PATHWAY = snakemake.input.pathway
 
     ref = load_reference(PATHWAY)
-    n = annotate_with_hierarchy(PATH_IN, ref, PATH_OUT)
 
-    print(
-        f"✓ KEGG : Merge step passed successfully "
-        f"-> {n} lines annotated "
-        f"-> {PATH_OUT}"
-    )
+    # Report
+    sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))
+    process = annotate_with_hierarchy(PATH_IN, ref, PATH_OUT)
+    if process:
+        logging.info(
+            f"[KEGG_MERGE] SUCCESS | Sample: {sample_name} | "
+            ""
+            f"Count: {process} | Output: {PATH_OUT}"
+        )
+    else:
+        logging.error(
+            f"[KEGG_MERGE] FAILED  | Sample: {sample_name} | Input: {PATH_IN}"
+        )
+
+        raise RuntimeError(f"Filtering failed for {sample_name}")

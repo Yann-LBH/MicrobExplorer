@@ -6,7 +6,16 @@
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
+import os
+import logging
 import pandas as pd
+
+# Configure logging to display time, level, and message properly
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 
 def intersection_kegg(PATH_IN: str, COUNTS: str, PATH_OUT: str) -> int:
@@ -42,9 +51,18 @@ if __name__ == "__main__":
     COUNTS = snakemake.input.counted
     PATH_OUT = snakemake.output.intersec
 
-    n = intersection_kegg(PATH_IN, COUNTS, PATH_OUT)
-    print(
-        f"✓ KEGG : Intersection step passed successfully "
-        f"-> {n} contigs in intersection "
-        f"-> {PATH_OUT}"
-    )
+    # Report
+    sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))
+    process = intersection_kegg(PATH_IN, COUNTS, PATH_OUT)
+    if process:
+        logging.info(
+            f"[KEGG_INTERSECT] SUCCESS | Sample: {sample_name} | "
+            ""
+            f"Count: {process} | Output: {PATH_OUT}"
+        )
+    else:
+        logging.error(
+            f"[KEGG_INTERSECT] FAILED  | Sample: {sample_name} | Input: {PATH_IN}"
+        )
+
+        raise RuntimeError(f"Filtering failed for {sample_name}")

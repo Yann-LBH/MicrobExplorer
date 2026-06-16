@@ -6,10 +6,19 @@
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
+import os
+import logging
 import pandas as pd
 
+# Configure logging to display time, level, and message properly
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
-def agreger_par_ko(PATH_IN: str, PATH_OUT: str) -> int:
+
+def aggregate_by_ko(PATH_IN: str, PATH_OUT: str) -> int:
     """
     Agrège par code KEGG en sommant la colonne 'standardization'.
     Retourne le nombre de KO uniques.
@@ -32,10 +41,18 @@ if __name__ == "__main__":
     PATH_IN = snakemake.input.data
     PATH_OUT = snakemake.output.agreg
 
-    n = agreger_par_ko(PATH_IN, PATH_OUT)
+    # Report
+    sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))
+    process = aggregate_by_ko(PATH_IN, PATH_OUT)
+    if process:
+        logging.info(
+            f"[KEGG_AGGREGATION] SUCCESS | Sample: {sample_name} | "
+            ""
+            f"Count: {process} | Output: {PATH_OUT}"
+        )
+    else:
+        logging.error(
+            f"[KEGG_AGGREGATION] FAILED  | Sample: {sample_name} | Input: {PATH_IN}"
+        )
 
-    print(
-        f"✓ KEGG : Aggregation step passed successfully "
-        f"-> {n} unique KOs "
-        f"-> {PATH_OUT}"
-    )
+        raise RuntimeError(f"Filtering failed for {sample_name}")

@@ -6,7 +6,16 @@
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
+import os
+import logging
 import pandas as pd
+
+# Configure logging to display time, level, and message properly
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 FINAL_COLS = [
     "tax_id",
@@ -27,7 +36,9 @@ FINAL_COLS = [
 # 1. Loading mapping NCBI
 # ==========================================================================
 def load_mapping(TAXONOMY: str) -> pd.DataFrame:
-    return pd.read_csv(TAXONOMY, sep=";", header=0, quoting=3, dtype={"tax_id": "Int64"})
+    return pd.read_csv(
+        TAXONOMY, sep=";", header=0, quoting=3, dtype={"tax_id": "Int64"}
+    )
 
 
 # ==========================================================================
@@ -71,17 +82,26 @@ def enrich(
 
 # ==========================================================================
 if __name__ == "__main__":
-    
-    PATH_IN = read_counts(snakemake.input.data)
-    PATH_OUT = (snakemake.output.taxaname)
 
+    PATH_IN = read_counts(snakemake.input.data)
+    PATH_OUT = snakemake.output.taxaname
     TAXONOMY = load_mapping(snakemake.input.taxonomy)
     NOISE = list(snakemake.params.noise)
     TOP_N = int(snakemake.params.top_n)
 
-    df_final = enrich(PATH_IN, TAXONOMY, NOISE, TOP_N)
-    df_final.to_csv(PATH_OUT, sep="\t", index=False)
-    
-    print(
-        f"✓ READS : Enrichment step passed successfully -> {snakemake.output.taxaname}"
-    )
+    # Report
+    sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))
+    process = enrich(PATH_IN, TAXONOMY, NOISE, TOP_N)
+    process.to_csv(PATH_OUT, sep="\t", index=False)
+    if process:
+        logging.info(
+            f"[READS_ADD_TAXANAME] SUCCESS | Sample: {sample_name} | "
+            ""
+            f"Count: {process} | Output: {PATH_OUT}"
+        )
+    else:
+        logging.error(
+            f"[READS_ADD_TAXANAME] FAILED  | Sample: {sample_name} | Input: {PATH_IN}"
+        )
+
+        raise RuntimeError(f"Filtering failed for {sample_name}")

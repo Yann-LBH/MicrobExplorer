@@ -6,7 +6,16 @@
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
+import os
+import logging
 import pandas as pd
+
+# Configure logging to display time, level, and message properly
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 
 def load_taxonomy(TAXONOMY: str) -> pd.Series:
@@ -45,10 +54,18 @@ if __name__ == "__main__":
 
     taxonomy = load_taxonomy(TAXONOMY)
 
-    n_kept = run_annotation(PATH_IN, PATH_OUT, taxonomy)
+    # Report
+    sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))
+    process = run_annotation(PATH_IN, PATH_OUT, taxonomy)
+    if process:
+        logging.info(
+            f"[CONTIGS_ADD_TAXANAME] SUCCESS | Sample: {sample_name} | "
+            ""
+            f"Count: {process} | Output: {PATH_OUT}"
+        )
+    else:
+        logging.error(
+            f"[CONTIGS_ADD_TAXANAME] FAILED  | Sample: {sample_name} | Input: {PATH_IN}"
+        )
 
-    print(
-        f"✓ CONTIGS : Taxonomy annotation step passed successfully "
-        f"-> {n_kept} contigs annotated "
-        f"-> {PATH_OUT}"
-    )
+        raise RuntimeError(f"Filtering failed for {sample_name}")

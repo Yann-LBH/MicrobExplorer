@@ -7,7 +7,16 @@
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
+import os
+import logging
 import pandas as pd
+
+# Configure logging to display time, level, and message properly
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 
 def get_union_and_extract(
@@ -38,10 +47,18 @@ if __name__ == "__main__":
     RAW_DATA = snakemake.input.raw_data
     PATH_OUT = snakemake.output.union
 
-    n_kept = get_union_and_extract(ABUNDANCE, RPKM_FILTERED, RAW_DATA, PATH_OUT)
+    # Report
+    sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))
+    process = get_union_and_extract(ABUNDANCE, RPKM_FILTERED, RAW_DATA, PATH_OUT)
+    if process:
+        logging.info(
+            f"[CONTIGS_UNION_FILTER] SUCCESS | Sample: {sample_name} | "
+            ""
+            f"Count: {process} | Output: {PATH_OUT}"
+        )
+    else:
+        logging.error(
+            f"[CONTIGS_UNION_FILTER] FAILED  | Sample: {sample_name} | Input: {PATH_IN}"
+        )
 
-    print(
-        f"✓ CONTIGS : Union step passed successfully "
-        f"-> {n_kept} contigs extracted "
-        f"-> {PATH_OUT}"
-    )
+        raise RuntimeError(f"Filtering failed for {sample_name}")

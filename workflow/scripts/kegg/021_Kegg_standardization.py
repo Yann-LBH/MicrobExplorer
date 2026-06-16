@@ -6,12 +6,21 @@
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
+import os
+import logging
 import pandas as pd
+
+# Configure logging to display time, level, and message properly
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 REQUIRED_COLS = {"Reads_Mapped", "gene_length", "Length"}
 
 
-def calculer_score_kegg(PATH_IN: str, PATH_OUT: str) -> int:
+def calculate_score_kegg(PATH_IN: str, PATH_OUT: str) -> int:
     """
     Calcule l'abondance pondérée : (Reads_Mapped * gene_length) / Length
     Retourne le nombre de lignes traitées.
@@ -34,10 +43,18 @@ if __name__ == "__main__":
     PATH_IN = snakemake.input.data
     PATH_OUT = snakemake.output.stand
 
-    n = calculer_score_kegg(PATH_IN, PATH_OUT)
+    # Report
+    sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))
+    process = calculate_score_kegg(PATH_IN, PATH_OUT)
+    if process:
+        logging.info(
+            f"[KEGG_STANDARDIZATION] SUCCESS | Sample: {sample_name} | "
+            ""
+            f"Count: {process} | Output: {PATH_OUT}"
+        )
+    else:
+        logging.error(
+            f"[KEGG_STANDARDIZATION] FAILED  | Sample: {sample_name} | Input: {PATH_IN}"
+        )
 
-    print(
-        f"✓ KEGG : Standardization step passed successfully "
-        f"-> {n} lines processed "
-        f"-> {PATH_OUT}"
-    )
+        raise RuntimeError(f"Filtering failed for {sample_name}")

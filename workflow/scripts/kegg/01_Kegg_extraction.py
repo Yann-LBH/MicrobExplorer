@@ -7,6 +7,15 @@
 ################################################################################
 
 import re
+import os
+import logging
+
+# Configure logging to display time, level, and message properly
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 # Pré-compilation regex — justifié car appelée sur chaque ligne
 KEGG_PATTERN = re.compile(r"K\d{5}")
@@ -50,10 +59,18 @@ if __name__ == "__main__":
     PATH_IN = snakemake.input.gff
     PATH_OUT = snakemake.output.tsv
 
-    n = process_gff_kegg(PATH_IN, PATH_OUT)
+    # Report
+    sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))
+    process = process_gff_kegg(PATH_IN, PATH_OUT)
+    if process:
+        logging.info(
+            f"[KEGG_EXTRACT] SUCCESS | Sample: {sample_name} | "
+            ""
+            f"Count: {process} | Output: {PATH_OUT}"
+        )
+    else:
+        logging.error(
+            f"[KEGG_EXTRACT] FAILED  | Sample: {sample_name} | Input: {PATH_IN}"
+        )
 
-    print(
-        f"✓ KEGG : Extraction step passed successfully "
-        f"-> {n} annotations extracted "
-        f"-> {PATH_OUT}"
-    )
+        raise RuntimeError(f"Filtering failed for {sample_name}")

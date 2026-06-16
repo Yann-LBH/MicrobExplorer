@@ -6,8 +6,18 @@
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
+import os
+import logging
 
-def analyser_kaiju(PATH_IN, PATH_OUT):
+# Configure logging to display time, level, and message properly
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
+
+def kaiju_analyze(PATH_IN, PATH_OUT):
     counter = {}
 
     with open(PATH_IN, "r", encoding="utf-8") as f:
@@ -39,10 +49,18 @@ if __name__ == "__main__":
     PATH_IN = snakemake.input.raw_data
     PATH_OUT = snakemake.output.counted
 
-    success = analyser_kaiju(PATH_IN, PATH_OUT, COUNT_THRESHOLD)
-    if success:
-        print(f"✓ READS : Counting step passed successfully -> {PATH_OUT}")
-
+    # Report
+    sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))
+    process = kaiju_analyze(PATH_IN, PATH_OUT)
+    if process:
+        logging.info(
+            f"[READS_COUNTING] SUCCESS | Sample: {sample_name} | "
+            ""
+            f"Count: {process} | Output: {PATH_OUT}"
+        )
     else:
-        # Raise an exception so Snakemake knows the script failed
-        raise RuntimeError(f"Counting failed for file: {PATH_IN}")
+        logging.error(
+            f"[READS_COUNTING] FAILED  | Sample: {sample_name} | Input: {PATH_IN}"
+        )
+
+        raise RuntimeError(f"Filtering failed for {sample_name}")

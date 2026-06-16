@@ -6,7 +6,16 @@
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
+import os
+import logging
 import pandas as pd
+
+# Configure logging to display time, level, and message properly
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 
 def calculate_rpkm(PATH_IN: str, PATH_OUT: str) -> int:
@@ -40,8 +49,18 @@ if __name__ == "__main__":
     PATH_IN = snakemake.input.data
     PATH_OUT = snakemake.output.rpkm
 
-    n_rows = calculate_rpkm(PATH_IN, PATH_OUT)
+    # Report
+    sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))
+    process = calculate_rpkm(PATH_IN, PATH_OUT)
+    if process:
+        logging.info(
+            f"[CONTIGS_RPKM] SUCCESS | Sample: {sample_name} | "
+            ""
+            f"Count: {process} | Output: {PATH_OUT}"
+        )
+    else:
+        logging.error(
+            f"[CONTIGS_RPKM] FAILED  | Sample: {sample_name} | Input: {PATH_IN}"
+        )
 
-    print(
-        f"✓ CONTIGS : RPKM step passed successfully -> {n_rows} contigs processed -> {PATH_OUT}"
-    )
+        raise RuntimeError(f"Filtering failed for {sample_name}")

@@ -6,6 +6,16 @@
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
+import os
+import logging
+
+# Configure logging to display time, level, and message properly
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+
 
 def filtering_kaiju(PATH_IN, PATH_OUT, COUNT_THRESHOLD):
     """Filters Kaiju output lines based on a minimum read count threshold."""
@@ -41,13 +51,20 @@ if __name__ == "__main__":
 
     PATH_IN = snakemake.input.data
     PATH_OUT = snakemake.output.filtered
-
     COUNT_THRESHOLD = snakemake.params.count_threshold
 
-    success = filtering_kaiju(PATH_IN, PATH_OUT, COUNT_THRESHOLD)
-
-    if success:
-        print(f"✓ READS : Filtering step passed successfully -> {PATH_OUT}")
+    # Report
+    sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))
+    process = filtering_kaiju(PATH_IN, PATH_OUT, COUNT_THRESHOLD)
+    if process:
+        logging.info(
+            f"[READS_FILTER] SUCCESS | Sample: {sample_name} | "
+            ""
+            f"Count: {process} | Output: {PATH_OUT}"
+        )
     else:
-        # Raise an exception so Snakemake knows the script failed
-        raise RuntimeError(f"Filtering failed for file: {PATH_IN}")
+        logging.error(
+            f"[READS_FILTER] FAILED  | Sample: {sample_name} | Input: {PATH_IN}"
+        )
+
+        raise RuntimeError(f"Filtering failed for {sample_name}")

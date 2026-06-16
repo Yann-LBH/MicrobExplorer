@@ -6,7 +6,16 @@
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
+import os
+import logging
 import pandas as pd
+
+# Configure logging to display time, level, and message properly
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 METADATA_COLS = {"contig", "Length", "Contig_ID", "gene_length", "id", "product"}
 
@@ -35,9 +44,18 @@ if __name__ == "__main__":
     PATH_IN = snakemake.input.data
     PATH_OUT = snakemake.output.deseq2
 
-    n = sum_per_kegg(PATH_IN, PATH_OUT)
-    print(
-        f"✓ KEGG : DESeq2 preparation step passed successfully "
-        f"-> {n} unique KOs "
-        f"-> {PATH_OUT}"
-    )
+    # Report
+    sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))
+    process = sum_per_kegg(PATH_IN, PATH_OUT)
+    if process:
+        logging.info(
+            f"[KEGG_DESEQ2] SUCCESS | Sample: {sample_name} | "
+            ""
+            f"Count: {process} | Output: {PATH_OUT}"
+        )
+    else:
+        logging.error(
+            f"[KEGG_DESEQ2] FAILED  | Sample: {sample_name} | Input: {PATH_IN}"
+        )
+
+        raise RuntimeError(f"Filtering failed for {sample_name}")

@@ -6,7 +6,16 @@
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
+import os
+import logging
 import pandas as pd
+
+# Configure logging to display time, level, and message properly
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 
 def get_min_rpkm_across_samples(files: list[str]) -> pd.Series:
@@ -25,13 +34,13 @@ def get_min_rpkm_across_samples(files: list[str]) -> pd.Series:
 
 
 def filter_by_min_rpkm(
-    current_path: str, PATH_OUT: str, global_min: pd.Series, RPKM_THRESHOLD: float
+    current: str, PATH_OUT: str, global_min: pd.Series, RPKM_THRESHOLD: float
 ) -> int:
     """
     Filtre le TSV courant : garde les contigs dont le RPKM min global >= threshold.
     Retourne le nombre de lignes conservées.
     """
-    df = pd.read_csv(current_path, sep="\t")
+    df = pd.read_csv(current, sep="\t")
     mask = df["Contig_ID"].map(global_min).fillna(0.0) >= RPKM_THRESHOLD
     df[mask].to_csv(PATH_OUT, sep="\t", index=False)
     return mask.sum()
@@ -41,15 +50,25 @@ def filter_by_min_rpkm(
 if __name__ == "__main__":
 
     PATH_IN = snakemake.input.data
-    current = snakemake.input.current_sample
     PATH_OUT = snakemake.output.rpkm_filtered
     RPKM_THRESHOLD = float(snakemake.params.rpkm_threshold)
 
-    global_min = get_min_rpkm_across_samples(PATH_IN)
-    n_kept = filter_by_min_rpkm(current, PATH_OUT, global_min, RPKM_THRESHOLD)
+    current = snakemake.input.current_sample
 
-    print(
-        f"✓ CONTIGS : Filtered step passed successfully "
-        f"-> {n_kept} contigs kept (threshold={RPKM_THRESHOLD}) "
-        f"-> {PATH_OUT}"
-    )
+    global_min = get_min_rpkm_across_samples(PATH_IN)
+
+    # Report
+    sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))
+    process = filter_by_min_rpkm(current, PATH_OUT, global_min, RPKM_THRESHOLD)
+    if process:
+        logging.info(
+            f"[CONTIGS_RPKM_FILTER] SUCCESS | Sample: {sample_name} | "
+            ""
+            f"Count: {process} | Output: {PATH_OUT}"
+        )
+    else:
+        logging.error(
+            f"[CONTIGS_RPKM_FILTER] FAILED  | Sample: {sample_name} | Input: {PATH_IN}"
+        )
+
+        raise RuntimeError(f"Filtering failed for {sample_name}")
