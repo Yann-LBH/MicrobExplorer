@@ -25,21 +25,21 @@ source(file.path(helper_path, "utils", "utils_Barplot_DESeq2.R"))
 # ==========================================================================
 
 # Input
-DESEQ_FILES <- snakemake[["input"]][["deseq_files"]]
-PHYLOSEQ_OBJ <- snakemake[["input"]][["phyloseq_obj"]]
-METADATA <- snakemake[["input"]][["metadata"]]
+DESEQ_FILES <- as.character(snakemake@input$deseq_files)
+PHYLOSEQ_OBJ <- as.character(snakemake@input$phyloseq_obj)
+METADATA <- as.character(snakemake@input$metadata)
 
 # Output
-PDF <- snakemake[["output"]][["pdf"]]
-PARQUET <- snakemake[["output"]][["parquet"]]
+PDF <- as.character(snakemake@output$pdf)
+PARQUET <- as.character(snakemake@output$parquet)
 
 # Thresholds from config/params
-TITLE <- snakemake@params[["title"]] %||% "Top N Features Differentially Abundant"
-SUBTITLE <- snakemake@params[["subtitle"]] %||% "DESeq2 Results"
-PADJ_THRESHOLD <- snakemake@params[["padj"]] %||% 0.05
-LFC_THRESH <- snakemake@params[["lfc"]] %||% 0
-CONTRASTS_LIST <- snakemake@params[["contrasts"]] # e.g., ["ref", "date", "combo"]
-TOP_N <- snakemake@params[["top_n"]] %||% 10
+TITLE <- as.character(snakemake@params$title) %||% "Top N Features Differentially Abundant"
+SUBTITLE <- as.character(snakemake@params$subtitle) %||% "DESeq2 Results"
+PADJ_THRESHOLD <- as.numeric(snakemake@params$padj) %||% 0.05
+LFC_THRESH <- as.numeric(snakemake@params$lfc) %||% 0
+CONTRASTS_LIST <- unlist(as.character(snakemake@params$contrasts)) # e.g., ["ref", "date", "combo"]
+TOP_N <- as.integer(snakemake@params$top_n) %||% 10
 
 # ==========================================================================
 # 1. Data Loading

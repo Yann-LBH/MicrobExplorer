@@ -19,18 +19,18 @@ library(arrow)
 # ==========================================================================
 
 # Inputs
-DATA <- snakemake[["input"]][["data"]]
-PHYLOSEQ_OBJ <- snakemake[["input"]][["phyloseq_obj"]]
-METADATA <- snakemake[["input"]][["metadata"]]
+DATA <- as.character(snakemake@input$data)
+PHYLOSEQ_OBJ <- as.character(snakemake@input$phyloseq_obj)
+METADATA <- as.character(snakemake@input$metadata)
 
 # Outputs
-PDF <- snakemake[["output"]][["pdf"]]
-PARQUET <- snakemake[["output"]][["parquet"]]
+PDF <- as.character(snakemake@output$pdf)
+PARQUET <- as.character(snakemake@output$parquet)
 
 # Parameters
-TOP_N <- as.integer(snakemake$params$top_n)
-COLOR_OPT <- snakemake$params$color_opt
-CLUST_METHOD <- snakemake$params$clust_method
+TOP_N <- as.integer(snakemake@params$top_n)
+COLOR_OPT <- as.character(snakemake@params$color_opt)
+CLUST_METHOD <- as.character(snakemake@params$clust_method)
 
 
 # ==========================================================================

@@ -21,22 +21,22 @@ library(vegan)
 # ==========================================================================
 
 # Inputs
-DATA <- snakemake[["input"]][["data"]]
-METADATA <- snakemake[["input"]][["metadata"]]
-PHYSICO <- snakemake[["input"]][["physico"]]
+DATA <- as.character(snakemake@input$data)
+METADATA <- as.character(snakemake@input$metadata)
+PHYSICO <- as.character(snakemake@input$physico)
 
 # Outputs
-PDF <- snakemake[["output"]][["pdf"]]
-PARQUET <- snakemake[["output"]][["parquet"]]
-CSV <- snakemake[["output"]][["csv"]]
+PDF <- as.character(snakemake@output$pdf)
+PARQUET <- as.character(snakemake@output$parquet)
+CSV <- as.character(snakemake@output$csv)
 
 # Parameters
-SHARED <- snakemake[["params"]][["shared"]]
-TOP_N <- as.integer(snakemake[["params"]][["top_n"]])
-POINT_SIZE <- as.numeric(snakemake[["params"]][["point_size"]])
-DIM_X <- as.integer(snakemake[["params"]][["dim_x"]])
-DIM_Y <- as.integer(snakemake[["params"]][["dim_y"]])
-PHYSICO_COLS <- snakemake[["params"]][["physico_cols"]]
+SHARED <- as.character(snakemake@params$shared)
+TOP_N <- as.integer(snakemake@params$top_n)
+POINT_SIZE <- as.numeric(snakemake@params$point_size)
+DIM_X <- as.integer(snakemake@params$dim_x)
+DIM_Y <- as.integer(snakemake@params$dim_y)
+PHYSICO_COLS <- as.character(snakemake@params$physico_cols)
 
 # ✅ FIX: Uncommented and properly computed the dynamic dimension names for ggplot evaluation
 dim_names <- paste0("Dim.", c(DIM_X, DIM_Y))

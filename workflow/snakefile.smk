@@ -285,26 +285,26 @@ rule download_taxonomy:
     output:
         zip=temp("data/taxonomy/new_taxdump.zip"),
         dmp_name=config["input_path"]["taxonomy_ncbi"]["dmp_name"],
-        taxonomy=config["input_path"]["taxonomy_ncbi"]["local_path"],
+        taxonomy=config["input_path"]["taxonomy_ncbi"]["local_path"]
     conda:
         "envs/py_env.yaml"
     params:
-        url=config["input_path"]["taxonomy_ncbi"]["zip_url"],
+        url=config["input_path"]["taxonomy_ncbi"]["zip_url"]
     script:
         os.path.abspath(
-            "scripts/utils/utils_convert_NCBInames_to_TaxaTable.py"
+            "workflow/scripts/utils/utils_convert_NCBInames_to_TaxaTable.py"
         )
 
 
 rule download_input_pathway:
     output:
-        tsv=config["input_path"]["pathway_bakta"]["local_path"],
+        tsv=config["input_path"]["pathway_bakta"]["local_path"]
     conda:
         "envs/py_env.yaml"
     params:
-        url=config["input_path"]["pathway_bakta"]["url"],
+        url=config["input_path"]["pathway_bakta"]["url"]
     script:
-        os.path.abspath("scripts/utils/utils_pathway_levels_extraction.py")
+        os.path.abspath("workflow/scripts/utils/utils_pathway_levels_extraction.py")
 
 
 # ==========================================================================
@@ -312,34 +312,34 @@ rule download_input_pathway:
 # ==========================================================================
 rule run_qc:
     input:
-        data=lambda w: get_qc_inputs(w.source),
+        data=lambda w: get_qc_inputs(w.source)
     output:
         parquet=pjoin(
             config["output_path"]["parquet"], "report_qc_data_{source}.parquet"
-        ),
+        )
     conda:
         "envs/py_env.yaml"
     params:
         steps_config=lambda w: QC_STEPS[w.source],
-        active_modules=lambda w: filter_active_sources(config["datatypes"]["qc"]),
+        active_modules=lambda w: filter_active_sources(config["datatypes"]["qc"])
     script:
-        os.path.abspath("scripts/utils/utils_qc_wrapper.py")
+        os.path.abspath("workflow/scripts/utils/utils_qc_wrapper.py")
 
 
 rule run_plot_qc:
     input:
-        data=pjoin(config["output_path"]["parquet"], "report_qc_data_{source}.parquet"),
+        data=pjoin(config["output_path"]["parquet"], "report_qc_data_{source}.parquet")
     output:
         pdf=pjoin(config["output_path"]["qc"], "qc", "Report_QC_final_{source}.pdf"),
         parquet=pjoin(
             config["output_path"]["parquet"], "report_qc_final_{source}.parquet"
-        ),
+        )
     conda:
         "envs/r_env.yaml"
     params:
-        active_modules=lambda w: filter_active_sources(config["datatypes"]["qc"]),
+        active_modules=lambda w: filter_active_sources(config["datatypes"]["qc"])
     script:
-        os.path.abspath("scripts/utils/utils_barplot_qc.R")
+        os.path.abspath("workflow/scripts/utils/utils_barplot_qc.R")
 
 
 # ==========================================================================
@@ -349,41 +349,41 @@ rule run_plot_qc:
 
 rule reads_countig:
     input:
-        raw_data=lambda w: READS_FILES[w.sample],
+        raw_data=lambda w: READS_FILES[w.sample]
     output:
-        counted=READS_TREATMENT + "1.Counted/counted_{sample}_reads.tsv",
+        counted=READS_TREATMENT + "1.Counted/counted_{sample}_reads.tsv"
     conda:
         "envs/py_env.yaml"
     script:
-        os.path.abspath("scripts/reads/01_Reads_counting_raw.py")
+        os.path.abspath("workflow/scripts/reads/01_Reads_counting_raw.py")
 
 
 rule reads_filter:
     input:
-        data=READS_TREATMENT + "1.Counted/counted_{sample}_reads.tsv",
+        data=READS_TREATMENT + "1.Counted/counted_{sample}_reads.tsv"
     output:
-        filtered=READS_TREATMENT + "2.Filtered/filtered_{sample}_reads.tsv",
+        filtered=READS_TREATMENT + "2.Filtered/filtered_{sample}_reads.tsv"
     conda:
         "envs/py_env.yaml"
     params:
-        count_threshold=config["reads"]["count_threshold"],
+        count_threshold=config["reads"]["count_threshold"]
     script:
-        os.path.abspath("scripts/reads/02_Reads_filter.py")
+        os.path.abspath("workflow/scripts/reads/02_Reads_filter.py")
 
 
 rule reads_add_taxaname:
     input:
         data=READS_TREATMENT + "2.Filtered/filtered_{sample}_reads.tsv",
-        taxonomy=config["input_path"]["taxonomy_ncbi"]["local_path"],
+        taxonomy=config["input_path"]["taxonomy_ncbi"]["local_path"]
     output:
-        taxaname=READS_TREATMENT + "3.Annotated/annotated_{sample}_reads.tsv",
+        taxaname=READS_TREATMENT + "3.Annotated/annotated_{sample}_reads.tsv"
     conda:
         "envs/py_env.yaml"
     params:
         top_n=config["reads"]["top_n"],
-        noise=config["reads"]["noise"],
+        noise=config["reads"]["noise"]
     script:
-        os.path.abspath("scripts/reads/03_Reads_add_taxaname.py")
+        os.path.abspath("workflow/scripts/reads/03_Reads_add_taxaname.py")
 
 
 # ==========================================================================
@@ -393,15 +393,15 @@ rule reads_add_taxaname:
 
 rule contigs_counting:
     input:
-        raw_data=lambda w: CONTIGS_FILES[w.sample],
+        raw_data=lambda w: CONTIGS_FILES[w.sample]
     output:
-        counted=CONTIGS_TREATMENT + "1.Counted/counted_{sample}_contigs.tsv",
+        counted=CONTIGS_TREATMENT + "1.Counted/counted_{sample}_contigs.tsv"
     conda:
         "envs/py_env.yaml"
     params:
-        length_threshold=config["contigs"]["length_threshold"],
+        length_threshold=config["contigs"]["length_threshold"]
     script:
-        os.path.abspath("scripts/contigs/01_Contigs_counting.py")
+        os.path.abspath("workflow/scripts/contigs/01_Contigs_counting.py")
 
 
 # Optimisation of rule filter use for global abundance calculation
@@ -410,52 +410,52 @@ rule contigs_global_abundance:
         all_data=expand(
             CONTIGS_TREATMENT + "1.Counted/counted_{sample}_contigs.tsv",
             sample=SAMPLES,
-        ),
+        )
     output:
-        global_abundance=CONTIGS_TREATMENT + "global_abundance_contigs.tsv",
+        global_abundance=CONTIGS_TREATMENT + "global_abundance_contigs.tsv"
     conda:
         "envs/py_env.yaml"
     script:
-        os.path.abspath("scripts/contigs/02_a_Contigs_global_abundance.py")
+        os.path.abspath("workflow/scripts/contigs/02_a_Contigs_global_abundance.py")
 
 
 rule contigs_filter:
     input:
         data=CONTIGS_TREATMENT + "1.Counted/counted_{sample}_contigs.tsv",
-        global_abundance=CONTIGS_TREATMENT + "global_abundance_contigs.tsv",
+        global_abundance=CONTIGS_TREATMENT + "global_abundance_contigs.tsv"
     output:
-        filtered=CONTIGS_TREATMENT + "2.Filtered/filtered_{sample}_contigs.tsv",
+        filtered=CONTIGS_TREATMENT + "2.Filtered/filtered_{sample}_contigs.tsv"
     conda:
         "envs/py_env.yaml"
     params:
-        abundance_threshold=config["contigs"]["abundance_threshold"],
+        abundance_threshold=config["contigs"]["abundance_threshold"]
     script:
-        os.path.abspath("scripts/contigs/02_b_Contigs_filter.py")
+        os.path.abspath("workflow/scripts/contigs/02_b_Contigs_filter.py")
 
 
 rule contigs_rpkm:
     input:
-        data=CONTIGS_TREATMENT + "1.Counted/counted_{sample}_contigs.tsv",
+        data=CONTIGS_TREATMENT + "1.Counted/counted_{sample}_contigs.tsv"
     output:
-        rpkm=CONTIGS_TREATMENT + "3.RPKM/rpkm_{sample}_contigs.tsv",
+        rpkm=CONTIGS_TREATMENT + "3.RPKM/rpkm_{sample}_contigs.tsv"
     conda:
         "envs/py_env.yaml"
     script:
-        os.path.abspath("scripts/contigs/03_Contigs_RPKM.py")
+        os.path.abspath("workflow/scripts/contigs/03_Contigs_RPKM.py")
 
 
 rule contigs_rpkm_filter:
     input:
-        data=CONTIGS_TREATMENT + "3.RPKM/rpkm_{sample}_contigs.tsv",
+        data=CONTIGS_TREATMENT + "3.RPKM/rpkm_{sample}_contigs.tsv"
     output:
         rpkm_filtered=CONTIGS_TREATMENT
-        + "4.RPKM_Filtered/rpkm_filtered_{sample}_contigs.tsv",
+        + "4.RPKM_Filtered/rpkm_filtered_{sample}_contigs.tsv"
     conda:
         "envs/py_env.yaml"
     params:
         rpkm_threshold=config["contigs"]["rpkm_threshold"],
     script:
-        os.path.abspath("scripts/contigs/04_Contigs_RPKM_filter.py")
+        os.path.abspath("workflow/scripts/contigs/04_Contigs_RPKM_filter.py")
 
 
 rule contigs_union:
@@ -463,25 +463,25 @@ rule contigs_union:
         raw_data=lambda w: CONTIGS_FILES[w.sample],
         abundance=CONTIGS_TREATMENT + "2.Filtered/filtered_{sample}_contigs.tsv",
         rpkm_filtered=CONTIGS_TREATMENT
-        + "4.RPKM_Filtered/rpkm_filtered_{sample}_contigs.tsv",
+        + "4.RPKM_Filtered/rpkm_filtered_{sample}_contigs.tsv"
     output:
-        union=CONTIGS_TREATMENT + "5.Union/union_{sample}_contigs.tsv",
+        union=CONTIGS_TREATMENT + "5.Union/union_{sample}_contigs.tsv"
     conda:
         "envs/py_env.yaml"
     script:
-        os.path.abspath("scripts/contigs/05_Contigs_union_filtered.py")
+        os.path.abspath("workflow/scripts/contigs/05_Contigs_union_filtered.py")
 
 
 rule contigs_add_taxaname:
     input:
         data=CONTIGS_TREATMENT + "5.Union/union_{sample}_contigs.tsv",
-        taxonomy=config["input_path"]["taxonomy_megahit"],
+        taxonomy=config["input_path"]["taxonomy_megahit"]
     output:
-        taxaname=CONTIGS_TREATMENT + "6.Annotated/annotated_{sample}_contigs.tsv",
+        taxaname=CONTIGS_TREATMENT + "6.Annotated/annotated_{sample}_contigs.tsv"
     conda:
         "envs/py_env.yaml"
     script:
-        os.path.abspath("scripts/contigs/06_Contigs_add_taxaname.py")
+        os.path.abspath("workflow/scripts/contigs/06_Contigs_add_taxaname.py")
 
 
 # ==========================================================================
@@ -491,70 +491,70 @@ rule contigs_add_taxaname:
 
 rule kegg_extraction:
     input:
-        raw_data=lambda w: KEGG_FILES[w.sample],
+        raw_data=lambda w: KEGG_FILES[w.sample]
     output:
-        extracted=KEGG_TREATMENT + "1.Extracted/extracted_{sample}_kegg.tsv",
+        extracted=KEGG_TREATMENT + "1.Extracted/extracted_{sample}_kegg.tsv"
     conda:
         "envs/py_env.yaml"
     script:
-        os.path.abspath("scripts/kegg/01_Kegg_extraction.py")
+        os.path.abspath("workflow/scripts/kegg/01_Kegg_extraction.py")
 
 
 rule kegg_intersec_count:
     input:
         data=KEGG_TREATMENT + "1.Extracted/extracted_{sample}_kegg.tsv",
-        counted=CONTIGS_TREATMENT + "1.Counted/counted_{sample}_contigs.tsv",
+        counted=CONTIGS_TREATMENT + "1.Counted/counted_{sample}_contigs.tsv"
     output:
-        intersec=KEGG_TREATMENT + "2.Intersected/intersected_{sample}_kegg.tsv",
+        intersec=KEGG_TREATMENT + "2.Intersected/intersected_{sample}_kegg.tsv"
     conda:
         "envs/py_env.yaml"
     script:
-        os.path.abspath("scripts/kegg/02_Kegg_count_intersection.py")
+        os.path.abspath("workflow/scripts/kegg/02_Kegg_count_intersection.py")
 
 
 rule kegg_prepared_deseq2:
     input:
-        data=KEGG_TREATMENT + "2.Intersected/intersected_{sample}_kegg.tsv",
+        data=KEGG_TREATMENT + "2.Intersected/intersected_{sample}_kegg.tsv"
     output:
-        deseq2=KEGG_TREATMENT + "3.Deseq2/deseq2_{sample}_kegg.tsv",
+        deseq2=KEGG_TREATMENT + "3.Deseq2/deseq2_{sample}_kegg.tsv"
     conda:
         "envs/py_env.yaml"
     script:
-        os.path.abspath("scripts/kegg/03_Kegg_prepared_for_DESeq2.py")
+        os.path.abspath("workflow/scripts/kegg/03_Kegg_prepared_for_DESeq2.py")
 
 
 rule kegg_standardization:
     input:
-        data=KEGG_TREATMENT + "2.Intersected/intersected_{sample}_kegg.tsv",
+        data=KEGG_TREATMENT + "2.Intersected/intersected_{sample}_kegg.tsv"
     output:
-        stand=KEGG_TREATMENT + "021.Standardized/standardized_{sample}_kegg.tsv",
+        stand=KEGG_TREATMENT + "021.Standardized/standardized_{sample}_kegg.tsv"
     conda:
         "envs/py_env.yaml"
     script:
-        os.path.abspath("scripts/kegg/021_Kegg_standardization.py")
+        os.path.abspath("workflow/scripts/kegg/021_Kegg_standardization.py")
 
 
 rule kegg_standardization_agregation:
     input:
-        data=KEGG_TREATMENT + "021.Standardized/standardized_{sample}_kegg.tsv",
+        data=KEGG_TREATMENT + "021.Standardized/standardized_{sample}_kegg.tsv"
     output:
-        agreg=KEGG_TREATMENT + "022.Aggregated/stand_aggreg_{sample}_kegg.tsv",
+        agreg=KEGG_TREATMENT + "022.Aggregated/stand_aggreg_{sample}_kegg.tsv"
     conda:
         "envs/py_env.yaml"
     script:
-        os.path.abspath("scripts/kegg/022_Kegg_standardization_aggregation.py")
+        os.path.abspath("workflow/scripts/kegg/022_Kegg_standardization_aggregation.py")
 
 
 rule kegg_merge_input_pathway_levels:
     input:
         data=KEGG_TREATMENT + "022.Aggregated/stand_aggreg_{sample}_kegg.tsv",
-        input_pathway=config["input_path"]["pathway_bakta"]["local_path"],
+        input_pathway=config["input_path"]["pathway_bakta"]["local_path"]
     output:
-        taxaname=KEGG_TREATMENT + "023.Annotated/annotated_{sample}_kegg.tsv",
+        taxaname=KEGG_TREATMENT + "023.Annotated/annotated_{sample}_kegg.tsv"
     conda:
         "envs/py_env.yaml"
     script:
-        os.path.abspath("scripts/kegg/023_Kegg_merge_pathway_levels.py")
+        os.path.abspath("workflow/scripts/kegg/023_Kegg_merge_pathway_levels.py")
 
 
 # ==========================================================================
@@ -570,7 +570,7 @@ rule plot_stackedbarplot_deseq2:
         phyloseq_obj=pjoin(
             config["output_path"]["rds"], "{source}", "phyloseq_{source}.rds"
         ),
-        metadata=config["input_path"]["metadata"],
+        metadata=config["input_path"]["metadata"]
     output:
         pdf=pjoin(
             config["output_path"]["plots"],
@@ -580,7 +580,7 @@ rule plot_stackedbarplot_deseq2:
         ),
         parquet=pjoin(
             config["output_path"]["parquet"], "stackedbarplot_deseq2_{source}.parquet"
-        ),
+        )
     conda:
         "envs/r_env.yaml"
     params:
@@ -589,15 +589,15 @@ rule plot_stackedbarplot_deseq2:
         padj=config["plots"]["volcano"]["pvalue_threshold"],
         lfc=config["plots"]["volcano"]["lfc_treshold"],
         contrasts=config["deseq2_contrasts"],
-        top_n=config["plots"]["stackedbarplot"]["top_n"],
+        top_n=config["plots"]["stackedbarplot"]["top_n"]
     script:
-        os.path.abspath("scripts/plots/Stackedbarplot_from_DESeq2.R")
+        os.path.abspath("workflow/scripts/plots/Stackedbarplot_from_DESeq2.R")
 
 
 rule plot_stackedbarplot:
     input:
         data=lambda w: TREATMENT_SOURCES[w.source],
-        metadata=config["input_path"]["metadata"],
+        metadata=config["input_path"]["metadata"]
     output:
         pdf=pjoin(
             config["output_path"]["plots"],
@@ -610,7 +610,7 @@ rule plot_stackedbarplot:
             "stackedbarplot",
             "{mode}",
             "stackedbarplot_{filename}_{source}.parquet",
-        ),
+        )
     wildcard_constraints:
         # Empêche les wildcards {mode} et {filename} de capturer le mot "deseq2"
         mode="(?!deseq2)[a-zA-Z0-9_]+",
@@ -621,9 +621,9 @@ rule plot_stackedbarplot:
         mode=lambda w: FILENAME_TO_MODE.get(w.filename, w.filename),
         top_n=config["plots"]["stackedbarplot"]["top_n"],
         target_rank=config["plots"]["stackedbarplot"]["taxon_rank"],
-        value_col=lambda w: PLOT_PARAMS[w.source]["value_col"],
+        value_col=lambda w: PLOT_PARAMS[w.source]["value_col"]
     script:
-        os.path.abspath("scripts/plots/Stackedbarplot_abundance.R")
+        os.path.abspath("workflow/scripts/plots/Stackedbarplot_abundance.R")
 
 
 rule plot_heatmap:
@@ -632,7 +632,7 @@ rule plot_heatmap:
             config["output_path"]["rds"], "{source}", "phyloseq_{source}.rds"
         ),
         data=lambda w: TREATMENT_SOURCES[w.source],
-        metadata=config["input_path"]["metadata"],
+        metadata=config["input_path"]["metadata"]
     output:
         pdf=pjoin(
             config["output_path"]["plots"],
@@ -640,26 +640,26 @@ rule plot_heatmap:
             "{source}",
             "Heatmap_{source}.pdf",
         ),
-        parquet=pjoin(config["output_path"]["parquet"], "heatmap_{source}.parquet"),
+        parquet=pjoin(config["output_path"]["parquet"], "heatmap_{source}.parquet")
     conda:
         "envs/r_env.yaml"
     params:
         shared=config["plots"]["shared"],
         top_n=config["plots"]["heatmap"]["top_n"],
-        clust_method=config["plots"]["heatmap"]["clust_method"],
+        clust_method=config["plots"]["heatmap"]["clust_method"]
     script:
-        os.path.abspath("scripts/plots/Heatmap.R")
+        os.path.abspath("workflow/scripts/plots/Heatmap.R")
 
 
 rule plot_pca:
     input:
         data=lambda w: TREATMENT_SOURCES[w.source],
         metadata=config["input_path"]["metadata"],
-        physico=config["input_path"]["physico_params"],
+        physico=config["input_path"]["physico_params"]
     output:
         pdf=pjoin(config["output_path"]["plots"], "pca", "PCA_{source}.pdf"),
         parquet=pjoin(config["output_path"]["parquet"], "pca_{source}.parquet"),
-        csv=pjoin("results", "infos", "pca", "pca_contributions_{source}.csv"),
+        csv=pjoin("results", "infos", "pca", "pca_contributions_{source}.csv")
     conda:
         "envs/r_env.yaml"
     params:
@@ -668,16 +668,16 @@ rule plot_pca:
         point_size=config["plots"]["pca"]["point_size"],
         dim_x=config["plots"]["pca"]["dim_x"],
         dim_y=config["plots"]["pca"]["dim_y"],
-        physico_cols=config["plots"]["pca"]["physico_cols"],
+        physico_cols=config["plots"]["pca"]["physico_cols"]
     script:
-        os.path.abspath("scripts/plots/PCA.R")
+        os.path.abspath("workflow/scripts/plots/PCA.R")
 
 
 rule plot_volcano_DESeq2:
     input:
         deseq_files=pjoin(
             config["output_path"]["rds"], "{source}", "deseq2_{source}.rds"
-        ),
+        )
     output:
         pdf=pjoin(
             config["output_path"]["plots"],
@@ -689,29 +689,29 @@ rule plot_volcano_DESeq2:
             config["output_path"]["parquet"],
             "{source}",
             "volcano_from_deseq2_{source}.parquet",
-        ),
+        )
     conda:
         "envs/r_env.yaml"
     params:
         padj=config["plots"]["volcano"]["pvalue_threshold"],
         lfc=config["plots"]["volcano"]["lfc_treshold"],
-        contrast=config["deseq2_contrasts"],
+        contrast=config["deseq2_contrasts"]
     script:
-        os.path.abspath("scripts/plots/Volcano_from_DESeq2.R")
+        os.path.abspath("workflow/scripts/plots/Volcano_from_DESeq2.R")
 
 
 rule plot_physico:
     input:
-        physico=config["input_path"]["physico_params"],
+        physico_params=config["input_path"]["physico_params"]
     output:
         pdf=pjoin(config["output_path"]["plots"], "physico", "Physico_plots.pdf"),
         parquet=pjoin(
             config["output_path"]["parquet"], "physico", "physico_data.parquet"
-        ),
+        )
     conda:
         "envs/r_env.yaml"
     script:
-        os.path.abspath("scripts/plots/Curves_physico_parameters.R")
+        os.path.abspath("workflow/scripts/plots/Curves_physico_parameters.R")
 
 
 # ==========================================================================
@@ -722,13 +722,13 @@ rule plot_physico:
 rule run_phyloseq:
     input:
         data=lambda w: TREATMENT_SOURCES[w.source],
-        metadata=config["input_path"]["metadata"],
+        metadata=config["input_path"]["metadata"]
     output:
-        rds=pjoin(config["output_path"]["rds"], "{source}", "phyloseq_{source}.rds"),
+        rds=pjoin(config["output_path"]["rds"], "{source}", "phyloseq_{source}.rds")
     conda:
         "envs/r_env.yaml"
     script:
-        os.path.abspath("scripts/analysis/Phyloseq.R")
+        os.path.abspath("workflow/scripts/analysis/Phyloseq.R")
 
 
 rule run_deseq2:
@@ -736,18 +736,18 @@ rule run_deseq2:
         data=lambda w: TREATMENT_SOURCES[
             "kegg_deseq2" if w.source == "kegg" else w.source
         ],
-        metadata=config["input_path"]["metadata"],
+        metadata=config["input_path"]["metadata"]
     output:
         rds=pjoin(config["output_path"]["rds"], "{source}", "deseq2_{source}.rds"),
         parquet=pjoin(
             config["output_path"]["parquet"], "{source}", "deseq2_{source}.parquet"
-        ),
+        )
     conda:
         "envs/r_env.yaml"
     params:
-        contrasts=config["deseq2_contrasts"],
+        contrasts=config["deseq2_contrasts"]
     script:
-        os.path.abspath("scripts/analysis/DESeq2.R")
+        os.path.abspath("workflow/scripts/analysis/DESeq2.R")
 
 
 # ==========================================================================
@@ -757,10 +757,10 @@ rule run_deseq2:
 
 rule generate_pipeline_report:
     input:
-        # We pass the exact same target list as inputs to force compilation before the audit
-        get_targets(),
+        # Enlèvement de la virgule de fin pour éviter le tuple fantôme
+        get_targets()
     output:
-        report="logs/final_pipeline_report.txt",
+        report="logs/final_pipeline_report.txt"
     run:
         import os
 
@@ -777,17 +777,18 @@ rule generate_pipeline_report:
             if missing:
                 failed_files[category] = missing
 
+        # CORRECTION : Utilisation de snakemake.config au lieu de config
         # --- 1. Taxonomy ---
-        if config["run_taxonomy"]:
+        if snakemake.config["run_taxonomy"]:
             check_files(
                 "Taxonomy Databases",
                 [
-                    config["input_path"]["taxonomy_ncbi"]["local_path"],
-                    config["input_path"]["pathway_bakta"]["local_path"],
+                    snakemake.config["input_path"]["taxonomy_ncbi"]["local_path"],
+                    snakemake.config["input_path"]["pathway_bakta"]["local_path"],
                 ],
             )
         # --- 2. Reads ---
-        if config["run_reads"]:
+        if snakemake.config["run_reads"]:
             check_files(
                 "Reads Annotations (TSV)",
                 expand(
@@ -796,7 +797,7 @@ rule generate_pipeline_report:
                 ),
             )
         # --- 3. Contigs ---
-        if config["run_contigs"]:
+        if snakemake.config["run_contigs"]:
             check_files(
                 "Contigs Annotations (TSV)",
                 expand(
@@ -806,7 +807,7 @@ rule generate_pipeline_report:
                 ),
             )
         # --- 4. KEGG ---
-        if config["run_kegg"]:
+        if snakemake.config["run_kegg"]:
             check_files(
                 "KEGG Annotations (TSV)",
                 expand(
@@ -815,12 +816,12 @@ rule generate_pipeline_report:
                 ),
             )
         # --- 5. Phyloseq Objects ---
-        if config["run_phyloseq"]:
+        if snakemake.config["run_phyloseq"]:
             check_files(
                 "Phyloseq (RDS)",
                 phyloseq(
                     pjoin(
-                        config["output_path"]["rds"],
+                        snakemake.config["output_path"]["rds"],
                         "{source}",
                         "phyloseq_{source}.rds",
                     ),
@@ -828,12 +829,12 @@ rule generate_pipeline_report:
                 ),
             )
         # --- 6. DESeq2 Objects & Parquets ---
-        if config["run_deseq2"]:
+        if snakemake.config["run_deseq2"]:
             check_files(
                 "DESeq2 (RDS/Parquet)",
                 deseq2(
                     pjoin(
-                        config["output_path"]["rds"],
+                        snakemake.config["output_path"]["rds"],
                         "{source}",
                         "deseq2_{source}.rds",
                     ),
@@ -841,7 +842,7 @@ rule generate_pipeline_report:
                 )
                 + deseq2(
                     pjoin(
-                        config["output_path"]["parquet"],
+                        snakemake.config["output_path"]["parquet"],
                         "{source}",
                         "deseq2_{source}.parquet",
                     ),
@@ -849,12 +850,12 @@ rule generate_pipeline_report:
                 ),
             )
         # --- 7. Plots & Associated Parquets ---
-        if config["run_plots"]:
+        if snakemake.config["run_plots"]:
             plot_targets = []
             # Heatmaps
             plot_targets += phyloseq(
                 pjoin(
-                    config["output_path"]["plots"],
+                    snakemake.config["output_path"]["plots"],
                     "heatmap",
                     "{source}",
                     "Heatmap_{source}.pdf",
@@ -862,17 +863,17 @@ rule generate_pipeline_report:
                 "heatmap",
             )
             plot_targets += phyloseq(
-                pjoin(config["output_path"]["parquet"], "heatmap_{source}.parquet"),
+                pjoin(snakemake.config["output_path"]["parquet"], "heatmap_{source}.parquet"),
                 "heatmap",
             )
             # Stackedbarplots standard
-            for mode, sources in config["datatypes"]["stackedbarplot"][
+            for mode, sources in snakemake.config["datatypes"]["stackedbarplot"][
                 "standard"
             ].items():
                 active_sources = filter_active_sources(sources)
                 plot_targets += expand(
                     pjoin(
-                        config["output_path"]["plots"],
+                        snakemake.config["output_path"]["plots"],
                         "stackedbarplot",
                         mode,
                         "Stackedbarplot_"
@@ -884,7 +885,7 @@ rule generate_pipeline_report:
             # Stackedbarplots DESeq2
             plot_targets += deseq2(
                 pjoin(
-                    config["output_path"]["plots"],
+                    snakemake.config["output_path"]["plots"],
                     "stackedbarplot",
                     "deseq2",
                     "Stackedbarplot_deseq2_{source}.pdf",
@@ -893,7 +894,7 @@ rule generate_pipeline_report:
             )
             plot_targets += deseq2(
                 pjoin(
-                    config["output_path"]["parquet"],
+                    snakemake.config["output_path"]["parquet"],
                     "stackedbarplot_deseq2_{source}.parquet",
                 ),
                 "deseq2",
@@ -901,7 +902,7 @@ rule generate_pipeline_report:
             # Volcano
             plot_targets += deseq2(
                 pjoin(
-                    config["output_path"]["plots"],
+                    snakemake.config["output_path"]["plots"],
                     "volcano",
                     "{source}",
                     "Volcano_deseq2_{source}.pdf",
@@ -910,7 +911,7 @@ rule generate_pipeline_report:
             )
             plot_targets += deseq2(
                 pjoin(
-                    config["output_path"]["parquet"],
+                    snakemake.config["output_path"]["parquet"],
                     "{source}",
                     "volcano_from_deseq2_{source}.parquet",
                 ),
@@ -919,25 +920,25 @@ rule generate_pipeline_report:
 
             check_files("Plots & Figure Parquets", plot_targets)
         # --- 8. Physico ---
-        if config["run_physico"]:
+        if snakemake.config["run_physico"]:
             check_files(
                 "Physico Plots",
                 [
                     pjoin(
-                        config["output_path"]["plots"],
+                        snakemake.config["output_path"]["plots"],
                         "physico",
                         "Physico_plots.pdf",
                     )
                 ],
             )
         # --- 9. Quality Control (QC) ---
-        if config["run_qc"]:
+        if snakemake.config["run_qc"]:
             datatypes = list(QC_STEPS.keys())
             active_qc_dt = [
                 s
                 for s in datatypes
                 if s in QC_STEPS
-                and config.get("sources", {}).get(s, False)
+                and snakemake.config.get("sources", {}).get(s, False)
                 and len(get_qc_inputs(s)) > 0
             ]
             if active_qc_dt:
@@ -946,20 +947,22 @@ rule generate_pipeline_report:
                     expand(
                         [
                             pjoin(
-                                config["output_path"]["qc"],
+                                snakemake.config["output_path"]["qc"],
                                 "qc",
                                 "Report_QC_final_{source}.pdf",
                             ),
                             pjoin(
-                                config["output_path"]["parquet"],
+                                snakemake.config["output_path"]["parquet"],
                                 "report_qc_final_{source}.parquet",
                             ),
                         ],
                         source=active_qc_dt,
                     ),
                 )
+        
+        # CORRECTION : open(snakemake.output.report) au lieu de open(output.report)
         # --- Write the final markdown-like report ---
-        with open(output.report, "w") as f:
+        with open(snakemake.output.report, "w") as f:
             f.write("==================================================\n")
             f.write("         PIPELINE RUN AUDIT REPORT                \n")
             f.write("==================================================\n\n")
@@ -983,12 +986,13 @@ rule generate_pipeline_report:
                     f.write(f"\n❌ {category} ({len(files)} missing file(s)):\n")
                     for file in files:
                         f.write(f"  - {file}\n")
+                        
         # Terminal feedback
         if failed_files:
             print(
-                f"\n⚠️ [Snakemake Audit] Some steps failed. Check the summary here: {output.report}\n"
+                f"\n⚠️ [Snakemake Audit] Some steps failed. Check the summary here: {snakemake.output.report}\n"
             )
         else:
             print(
-                f"\n🎉 [Snakemake Audit] Perfect run! Summary generated: {output.report}\n"
+                f"\n🎉 [Snakemake Audit] Perfect run! Summary generated: {snakemake.output.report}\n"
             )

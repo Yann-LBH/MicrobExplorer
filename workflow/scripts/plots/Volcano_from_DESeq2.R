@@ -16,15 +16,15 @@ library(arrow)
 # ==========================================================================
 
 # Inputs
-DESEQ_FILES <- snakemake[["input"]][["deseq_files"]]
+DESEQ_FILES <- as.character(snakemake@input$deseq_files)
 
 # Outputs
-PARQUET <- snakemake[["output"]][["parquet"]] # Single parquet file path
-PDF <- snakemake[["output"]][["pdf"]] # Single PDF file path
+PARQUET <- as.character(snakemake@output$parquet) # Single parquet file path
+PDF <- as.character(snakemake@output$pdf) # Single PDF file path
 
 # Parameters
-PADJ_THRESH <- snakemake[["params"]][["padj"]] %||% 0.05
-LFC_THRESH <- snakemake[["params"]][["lfc"]] %||% 0
+PADJ_THRESH <- as.numeric(snakemake@params$padj) %||% 0.05
+LFC_THRESH <- as.numeric(snakemake@params$lfc) %||% 0
 
 # ==========================================================================
 # Processing & Plotting

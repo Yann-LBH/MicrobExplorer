@@ -21,15 +21,21 @@ logging.basicConfig(
 # --- Filtering ---
 def filter_contigs(PATH_IN: str, PATH_OUT: str, THRESHOLD: int) -> int:
     """
-    Reads the input, filters based on `contig_length` >= `threshold`,
+    Reads the input, filters based on `Length` >= `threshold`,
     and writes the output to a TSV file.
     Returns the number of retained contigs.
     """
-    df = pd.read_csv(PATH_IN, sep="\t", dtype={"contig_length": int})
+    df = pd.read_csv(
+        PATH_IN, 
+        sep="\t", 
+        header=None, 
+        names=["Contig_id", "Length", "Reads_Mapped", "Reads_Unmapped"],
+        dtype={"Length": int}
+    )
 
-    df_filtered = df[df["contig_length"] >= THRESHOLD]
+    df_filtered = df[df["Length"] >= THRESHOLD]
 
-    df_filtered.to_csv(PATH_OUT, sep="\t", index=False)
+    df_filtered.to_csv(PATH_OUT, sep="\t", index=False, header=True)
     return len(df_filtered)
 
 

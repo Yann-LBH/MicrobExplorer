@@ -10,6 +10,7 @@
 library(readxl)
 library(data.table)
 library(purrr)
+library(dplyr)
 library(ggplot2)
 library(patchwork)
 library(viridis)
@@ -20,11 +21,12 @@ library(arrow)
 # ==========================================================================
 
 # Inputs
-PHYSICO <- snakemake[["input"]][["physico_params"]]
+# MODIFICATION : Sécurisation absolue du type pour read_excel
+PHYSICO <- as.vector(as.character(snakemake@input$physico_params))
 
 # Outputs
-PDF <- snakemake[["output"]][["pdf"]]
-PARQUET <- snakemake[["output"]][["parquet"]]
+PDF <- as.character(snakemake@output$pdf)
+PARQUET <- as.character(snakemake@output$parquet)
 
 # ==========================================================================
 # Functions
@@ -119,7 +121,7 @@ df_stats <- df_clean %>%
 df_final <- df_clean %>% left_join(df_stats, by = "date")
 
 # 3. Export to Parquet
-write_parquet(df_final, PARQET)
+write_parquet(df_final, PARQUET)
 message("\n✓ PARQUET : Curves_physico_parameters Successfully generated.")
 
 # ==========================================================================
@@ -132,6 +134,9 @@ nb_cols <- 2
 nb_rows <- 3
 
 all_conditions <- na.omit(unique(df_final$condition))
+
+# MODIFICATION CRITIQUE : On ouvre le fichier PDF unique ICI avant de commencer à boucler
+pdf(PDF, width = 11, height = 8.5)
 
 walk(all_conditions, function(cond) {
   data_subset <- df_final %>% filter(condition == cond)
@@ -154,12 +159,6 @@ walk(all_conditions, function(cond) {
   plot_list <- Filter(Negate(is.null), plot_list)
 
   if (length(plot_list) > 0) {
-    # PDF generation
-    safe_cond <- gsub("[^[:alnum:]]", "_", cond)
-    pdf_path <- file.path(PDF, paste0("Rapport_", safe_cond, ".pdf"))
-
-    pdf(pdf_path, width = 11, height = 8.5)
-
     # Split into pages
     pages <- split(plot_list, ceiling(seq_along(plot_list) / plots_per_page))
 
@@ -180,9 +179,8 @@ walk(all_conditions, function(cond) {
 
       print(combined_plot)
     })
-
-    dev.off()
   }
 })
+dev.off()
 
-message(sprintf("\n✓ PDF : Stackedbarplot from DESeq2 Successfully generated.", PDF))
+message("\n✓ PDF : Curves_physico_parameters Successfully generated.", PDF)

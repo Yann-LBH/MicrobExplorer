@@ -25,7 +25,7 @@ def calculate_rpkm(PATH_IN: str, PATH_OUT: str) -> int:
     """
     df = pd.read_csv(PATH_IN, sep="\t")
 
-    required_cols = {"Reads_Mapped", "Length"}
+    required_cols = {"Length", "Reads_Mapped"}
     missing = required_cols - set(df.columns)
     if missing:
         raise KeyError(f"Colonnes manquantes dans {PATH_IN} : {missing}")
