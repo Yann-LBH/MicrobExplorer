@@ -284,12 +284,12 @@ rule all:
 rule download_taxonomy:
     output:
         zip=temp("data/taxonomy/new_taxdump.zip"),
-        dmp_name=config["input_path"]["taxonomy_ncbi"]["dmp_name"],
         taxonomy=config["input_path"]["taxonomy_ncbi"]["local_path"]
     conda:
         "envs/py_env.yaml"
     params:
-        url=config["input_path"]["taxonomy_ncbi"]["zip_url"]
+        url=config["input_path"]["taxonomy_ncbi"]["zip_url"],
+                dmp_name=config["input_path"]["taxonomy_ncbi"]["dmp_name"],
     script:
         os.path.abspath(
             "workflow/scripts/utils/utils_convert_NCBInames_to_TaxaTable.py"
@@ -412,7 +412,7 @@ rule contigs_global_abundance:
             sample=SAMPLES,
         )
     output:
-        global_abundance=CONTIGS_TREATMENT + "global_abundance_contigs.tsv"
+        global_abundance=CONTIGS_TREATMENT + "2.Global_Abundance/global_abundance_contigs.tsv"
     conda:
         "envs/py_env.yaml"
     script:
@@ -422,7 +422,7 @@ rule contigs_global_abundance:
 rule contigs_filter:
     input:
         data=CONTIGS_TREATMENT + "1.Counted/counted_{sample}_contigs.tsv",
-        global_abundance=CONTIGS_TREATMENT + "global_abundance_contigs.tsv"
+        global_abundance=CONTIGS_TREATMENT + "2.Global_Abundance/global_abundance_contigs.tsv"
     output:
         filtered=CONTIGS_TREATMENT + "2.Filtered/filtered_{sample}_contigs.tsv"
     conda:

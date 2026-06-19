@@ -26,7 +26,7 @@ input_path:
   taxonomy_ncbi: 
     zip_url: "https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip"
     dmp_name: "data/taxonomy_ncbi/new_taxdump.zip/rankedlineage.dmp"
-    local_path: "data/taxonomy_ncbi/taxaname.csv"
+    local_path: "data/taxonomy_ncbi/taxaname.tsv"
   taxonomy_megahit: "data/taxonomy_megahit/contigs_coassembly-taxNames.tsv"
   pathway_bakta: 
     url : "https://rest.kegg.jp/get/br:ko00001"
@@ -52,7 +52,7 @@ output_path:
 run_taxonomy:     True
 run_reads:        True
 run_contigs:      True
-run_kegg:         True
+run_kegg:         False
 run_plots:        True
 run_deseq2:       True
 run_phyloseq:     True

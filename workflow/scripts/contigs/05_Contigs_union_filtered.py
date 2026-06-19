@@ -43,7 +43,7 @@ def get_union_and_extract(
 if __name__ == "__main__":
 
     ABUNDANCE = snakemake.input.abundance
-    RPKM_FILTERED = snakemake.input.rpkm
+    RPKM_FILTERED = snakemake.input.rpkm_filtered
     RAW_DATA = snakemake.input.raw_data
     PATH_OUT = snakemake.output.union
 

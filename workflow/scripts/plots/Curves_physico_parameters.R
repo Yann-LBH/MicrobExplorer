@@ -22,11 +22,11 @@ library(arrow)
 
 # Inputs
 # MODIFICATION : Sécurisation absolue du type pour read_excel
-PHYSICO <- as.vector(as.character(snakemake@input$physico_params))
+PHYSICO <- as.character(c(snakemake@input[["physico_params"]])[1])
 
 # Outputs
-PDF <- as.character(snakemake@output$pdf)
-PARQUET <- as.character(snakemake@output$parquet)
+PDF <- as.character(c(snakemake@output[["pdf"]])[1])
+PARQUET <- as.character(c(snakemake@output[["parquet"]])[1])
 
 # ==========================================================================
 # Functions

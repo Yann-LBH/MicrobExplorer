@@ -37,7 +37,7 @@ FINAL_COLS = [
 # ==========================================================================
 def load_mapping(TAXONOMY: str) -> pd.DataFrame:
     return pd.read_csv(
-        TAXONOMY, sep=";", header=0, quoting=3, dtype={"tax_id": "Int64"}
+        TAXONOMY, sep="\t", header=0, quoting=3, dtype={"tax_id": "Int64"}
     )
 
 
@@ -90,7 +90,7 @@ if __name__ == "__main__":
     TOP_N = int(snakemake.params.top_n)
 
     # Report
-    sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))
+    sample_name = snakemake.wildcards.sample
     process = enrich(PATH_IN, TAXONOMY, NOISE, TOP_N)
     process.to_csv(PATH_OUT, sep="\t", index=False)
     if process:

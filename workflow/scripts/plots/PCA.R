@@ -21,22 +21,39 @@ library(vegan)
 # ==========================================================================
 
 # Inputs
-DATA <- as.character(snakemake@input$data)
-METADATA <- as.character(snakemake@input$metadata)
-PHYSICO <- as.character(snakemake@input$physico)
+DATA <- as.character(c(snakemake@input[["data"]])[1])
+METADATA <- as.character(c(snakemake@input[["metadata"]])[1])
+PHYSICO <- as.character(c(snakemake@input[["physico"]])[1])
 
 # Outputs
-PDF <- as.character(snakemake@output$pdf)
-PARQUET <- as.character(snakemake@output$parquet)
-CSV <- as.character(snakemake@output$csv)
+PDF <- as.character(c(snakemake@output[["pdf"]])[1])
+PARQUET <- as.character(c(snakemake@output[["parquet"]])[1])
+CSV <- as.character(c(snakemake@output[["csv"]])[1])
 
 # Parameters
-SHARED <- as.character(snakemake@params$shared)
-TOP_N <- as.integer(snakemake@params$top_n)
-POINT_SIZE <- as.numeric(snakemake@params$point_size)
-DIM_X <- as.integer(snakemake@params$dim_x)
-DIM_Y <- as.integer(snakemake@params$dim_y)
-PHYSICO_COLS <- as.character(snakemake@params$physico_cols)
+SHARED <- c(snakemake@params[["shared"]])[1]
+TOP_N <- as.integer(c(snakemake@params[["top_n"]])[1])
+POINT_SIZE <- as.numeric(c(snakemake@params[["point_size"]])[1])
+DIM_X <- as.integer(c(snakemake@params[["dim_x"]])[1])
+DIM_Y <- as.integer(c(snakemake@params[["dim_y"]])[1])
+PHYSICO_COLS <- as.character(c(snakemake@params[["physico_cols"]])[1])
+
+# --- Extraction et Conversion Type par Type ---
+
+# 1. Les Textes (Character)
+THEME   <- as.character(shared_config$theme %||% "theme_minimal")
+PALETTE <- as.character(shared_config$palette %||% "Turbo")
+
+# 2. Les Nombres Décimaux (Numeric / Double)
+# Utile pour les dimensions des plots car on peut vouloir 8.5 ou 10.2
+WIDTH  <- as.numeric(shared_config$width %||% 10)
+HEIGHT <- as.numeric(shared_config$height %||% 8)
+
+# 3. Les Tailles de Police / Nombres Entiers (Integer)
+# Les tailles de texte sont généralement des entiers
+TITLE_SIZE  <- as.integer(shared_config$title$size %||% 12)
+LEGEND_SIZE <- as.integer(shared_config$legend$size %||% 10)
+AXES_SIZE   <- as.integer(shared_config$axes$size %||% 10)
 
 # ✅ FIX: Uncommented and properly computed the dynamic dimension names for ggplot evaluation
 dim_names <- paste0("Dim.", c(DIM_X, DIM_Y))

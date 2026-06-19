@@ -49,16 +49,16 @@ def filter_by_min_rpkm(
 # --- Exécution ---
 if __name__ == "__main__":
 
-    PATH_IN = snakemake.input.data
+    PATH_IN = snakemake.input
     PATH_OUT = snakemake.output.rpkm_filtered
     RPKM_THRESHOLD = float(snakemake.params.rpkm_threshold)
 
-    current = snakemake.input.current_sample
+    current = snakemake.input[0]
 
     global_min = get_min_rpkm_across_samples(PATH_IN)
 
     # Report
-    sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))
+    sample_name = snakemake.wildcards.sample
     process = filter_by_min_rpkm(current, PATH_OUT, global_min, RPKM_THRESHOLD)
     if process:
         logging.info(

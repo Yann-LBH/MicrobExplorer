@@ -20,19 +20,19 @@ library(arrow)
 # ==========================================================================
 
 # Inputs
-DATA <- as.character(snakemake@input$data)
-METADATA <- as.character(snakemake@input$metadata)
+DATA <- as.character(c(snakemake@input[["data"]])[1])
+METADATA <- as.character(c(snakemake@input[["metadata"]])[1])
 
 # Outputs
-PDF <- as.character(snakemake@output$pdf)
-PARQUET <- as.character(snakemake@output$parquet)
+PDF <- as.character(c(snakemake@output[["pdf"]])[1])
+PARQUET <- as.character(c(snakemake@output[["parquet"]])[1])
 
 # Parameters
-MODE <- as.character(snakemake@params$mode)
-TOP_N <- as.integer(snakemake@params$top_n)
-VALUE_COL <- as.character(snakemake@params$value_col)
-TARGET_RANK <- as.character(snakemake@params$target_rank) # taxonomy mode
-TAXON_RANK <- as.integer(snakemake@params$taxon_rank) # organisms mode
+MODE <- as.character(c(snakemake@params[["mode"]])[1])
+TOP_N <- as.integer(c(snakemake@params[["top_n"]])[1])
+VALUE_COL <- as.character(c(snakemake@params[["value_col"]])[1])
+TARGET_RANK <- as.character(c(snakemake@params[["target_rank"]])[1]) # taxonomy mode
+TAXON_RANK <- as.integer(c(snakemake@params[["taxon_rank"]])[1]) # organisms mode
 
 TAX_RANKS <- c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
 
