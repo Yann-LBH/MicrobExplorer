@@ -91,13 +91,19 @@ if __name__ == "__main__":
 
     # Report
     sample_name = snakemake.wildcards.sample
+
+    if "tax_id" in PATH_IN.columns:
+        PATH_IN["tax_id"] = PATH_IN["tax_id"].astype(str).str.strip()
+    if "tax_id" in TAXONOMY.columns:
+        TAXONOMY["tax_id"] = TAXONOMY["tax_id"].astype(str).str.strip()
+    
     process = enrich(PATH_IN, TAXONOMY, NOISE, TOP_N)
     process.to_csv(PATH_OUT, sep="\t", index=False)
-    if process:
+    if process.empty:
         logging.info(
             f"[READS_ADD_TAXANAME] SUCCESS | Sample: {sample_name} | "
             ""
-            f"Count: {process} | Output: {PATH_OUT}"
+            f"Count: {len(process)} | Output: {PATH_OUT}"
         )
     else:
         logging.error(

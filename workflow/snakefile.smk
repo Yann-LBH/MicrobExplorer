@@ -355,7 +355,7 @@ rule reads_countig:
     conda:
         "envs/py_env.yaml"
     script:
-        os.path.abspath("workflow/scripts/reads/01_Reads_counting_raw.py")
+        os.path.abspath("workflow/scripts/reads/01_Reads_counting.py")
 
 
 rule reads_filter:

@@ -48,7 +48,7 @@ if __name__ == "__main__":
     PATH_OUT = snakemake.output.union
 
     # Report
-    sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))
+    sample_name = snakemake.wildcards.sample
     process = get_union_and_extract(ABUNDANCE, RPKM_FILTERED, RAW_DATA, PATH_OUT)
     if process:
         logging.info(
