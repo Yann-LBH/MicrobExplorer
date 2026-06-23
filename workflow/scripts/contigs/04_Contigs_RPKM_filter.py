@@ -6,7 +6,6 @@
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
-import os
 import logging
 import pandas as pd
 

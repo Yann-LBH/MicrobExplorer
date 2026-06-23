@@ -6,7 +6,6 @@
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
-import os
 import logging
 import pandas as pd
 
@@ -18,8 +17,9 @@ logging.basicConfig(
 )
 
 FINAL_COLS = [
-    "tax_id",
-    "Reads",
+    "Read_ID",
+    "Count",
+    "CPM",
     "scientific_name",
     "domain",
     "kingdom",
@@ -36,48 +36,53 @@ FINAL_COLS = [
 # 1. Loading mapping NCBI
 # ==========================================================================
 def load_mapping(TAXONOMY: str) -> pd.DataFrame:
+    # Directly reading taxonomy assuming the column is already "Read_ID"
     return pd.read_csv(
-        TAXONOMY, sep="\t", header=0, quoting=3, dtype={"tax_id": "Int64"}
+        TAXONOMY, sep="\t", header=0, quoting=3, dtype={"Read_ID": str}
     )
 
 
 # ==========================================================================
-# 2. Read Kaiju files (format "taxon:reads")
+# 2. Read Kaiju files (TSV format: Read_ID, Count, CPM)
 # ==========================================================================
 def read_counts(PATH_IN: str) -> pd.DataFrame:
-    df = pd.read_csv(PATH_IN, sep=":", header=None, names=["Taxon", "Reads"])
-    df["tax_id"] = pd.to_numeric(
-        df["Taxon"].str.replace(r"[^0-9]", "", regex=True), errors="coerce"
-    ).astype("Int64")
-    df["Reads"] = pd.to_numeric(
-        df["Reads"].str.replace(r"[^0-9]", "", regex=True), errors="coerce"
+    # Directly loading file without any renaming steps
+    return pd.read_csv(
+        PATH_IN,
+        sep="\t",
+        header=0,
+        dtype={"Read_ID": str, "Count": int, "CPM": float},
     )
-    return df[["tax_id", "Reads"]]
 
 
 # ==========================================================================
-# 3. Enrichissement + Top N + Others
+# 3. Enrichment + Top N + Others
 # ==========================================================================
 def enrich(
     PATH_IN: pd.DataFrame, TAXONOMY: pd.DataFrame, NOISE: list[str], TOP_N: int
 ) -> pd.DataFrame:
 
-    df = PATH_IN.merge(TAXONOMY, on="tax_id", how="left")
+    df = PATH_IN.merge(TAXONOMY, left_on="Read_ID", right_on="tax_id", how="left")
     df = df[~df["domain"].isin(NOISE)]
     df = df[df["scientific_name"].notna()]
 
     df_top = df.head(TOP_N).copy()
     df_rest = df.iloc[TOP_N:].copy()
 
-    df_others = df_rest.groupby("domain", as_index=False)["Reads"].sum()
+    # Summing up both Count and CPM for the remaining entries
+    df_others = (
+        df_rest.groupby("domain", as_index=False)[["Count", "CPM"]].sum()
+    )
     df_others["scientific_name"] = "Others - " + df_others["domain"]
-    df_others["tax_id"] = pd.NA
+    df_others["Read_ID"] = pd.NA
 
     for col in FINAL_COLS:
         if col not in df_others.columns:
             df_others[col] = "Other"
 
-    return pd.concat([df_top[FINAL_COLS], df_others[FINAL_COLS]], ignore_index=True)
+    return pd.concat(
+        [df_top[FINAL_COLS], df_others[FINAL_COLS]], ignore_index=True
+    )
 
 
 # ==========================================================================
@@ -92,17 +97,16 @@ if __name__ == "__main__":
     # Report
     sample_name = snakemake.wildcards.sample
 
-    if "tax_id" in PATH_IN.columns:
-        PATH_IN["tax_id"] = PATH_IN["tax_id"].astype(str).str.strip()
-    if "tax_id" in TAXONOMY.columns:
-        TAXONOMY["tax_id"] = TAXONOMY["tax_id"].astype(str).str.strip()
-    
+    if "Read_ID" in PATH_IN.columns:
+        PATH_IN["Read_ID"] = PATH_IN["Read_ID"].astype(str).str.strip()
+    if "Read_ID" in TAXONOMY.columns:
+        TAXONOMY["Read_ID"] = TAXONOMY["Read_ID"].astype(str).str.strip()
+
     process = enrich(PATH_IN, TAXONOMY, NOISE, TOP_N)
     process.to_csv(PATH_OUT, sep="\t", index=False)
-    if process.empty:
+    if not process.empty:
         logging.info(
             f"[READS_ADD_TAXANAME] SUCCESS | Sample: {sample_name} | "
-            ""
             f"Count: {len(process)} | Output: {PATH_OUT}"
         )
     else:

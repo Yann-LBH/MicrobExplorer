@@ -11,30 +11,33 @@
 #   "organisms" — genus-level RPKM, produces global bar + stacked bar
 ################################################################################
 
-library(data.table)
-library(ggplot2)
-library(arrow)
-
 # ==========================================================================
 # Snakemake configuration
 # ==========================================================================
 
+library(data.table)
+library(ggplot2)
+library(arrow)
+library(readxl)
+
+# ==========================================================================
+# Configuration (Snakemake)
+# ==========================================================================
 # Inputs
-DATA <- as.character(c(snakemake@input[["data"]])[1])
-METADATA <- as.character(c(snakemake@input[["metadata"]])[1])
+DATA     <- as.character(snakemake@input[["data"]])
+METADATA <- as.character(snakemake@input[["metadata"]])
 
 # Outputs
-PDF <- as.character(c(snakemake@output[["pdf"]])[1])
+PDF     <- as.character(c(snakemake@output[["pdf"]])[1])
 PARQUET <- as.character(c(snakemake@output[["parquet"]])[1])
 
 # Parameters
-MODE <- as.character(c(snakemake@params[["mode"]])[1])
-TOP_N <- as.integer(c(snakemake@params[["top_n"]])[1])
-VALUE_COL <- as.character(c(snakemake@params[["value_col"]])[1])
-TARGET_RANK <- as.character(c(snakemake@params[["target_rank"]])[1]) # taxonomy mode
-TAXON_RANK <- as.integer(c(snakemake@params[["taxon_rank"]])[1]) # organisms mode
-
-TAX_RANKS <- c("Kingdom", "Phylum", "Class", "Order", "Family", "Genus", "Species")
+MODE          <- as.character(c(snakemake@params[["mode"]])[1])
+TOP_N         <- as.integer(c(snakemake@params[["top_n"]])[1])
+VALUE_COL     <- as.character(c(snakemake@params[["value_col"]])[1])
+TARGET_RANK   <- as.character(c(snakemake@params[["target_rank"]])[1]) # taxonomy mode
+TAXON_RANK    <- tolower(as.character(c(snakemake@params[["taxon_rank"]])[1])) %||% "genus"
+PATHWAY_LEVEL <- as.character(c(snakemake@params[["pathway_level"]])[1])
 
 # ==========================================================================
 # Helpers
@@ -47,17 +50,6 @@ make_palette <- function(categories) {
   colours <- c(viridisLite::viridis(length(top_cats), option = "turbo"), "#000000")
   names(colours) <- lvl_order
   list(colours = colours, levels = lvl_order)
-}
-
-# Generic Top-N collapse: returns a data.table with a `category` column
-top_n_collapse <- function(dt, value_col, group_col, by_cols, top_n) {
-  # Aggregate totals per group to rank
-  agg <- dt[, .(total = sum(get(value_col), na.rm = TRUE)), by = c(by_cols, group_col)]
-  agg[, category := {
-    r <- frank(-total, ties.method = "random")
-    fifelse(r <= top_n, get(group_col), "Others")
-  }, by = by_cols]
-  agg[, .(sum_val = sum(total)), by = c(by_cols, "category")]
 }
 
 # Stacked bar ggplot
@@ -87,15 +79,24 @@ stacked_bar <- function(dt, x_col, y_col, fill_col, colours, title, subtitle,
 # Load helpers — shared across modes
 # ==========================================================================
 
-load_tsv_dir <- function(paths, select_cols = NULL) {
+load_tsv_dir_dynamic <- function(paths, meta_dt, select_cols = NULL) {
   rbindlist(
     lapply(paths, function(f) {
+      file_name <- basename(f)
+      matched_sample <- meta_dt[sapply(sample_id, function(sid) grepl(sid, file_name)), sample_id]
+      
+      if (length(matched_sample) == 0 || is.na(matched_sample)) return(NULL)
+      
       dt <- if (is.null(select_cols)) {
         fread(f, showProgress = FALSE)
       } else {
-        fread(f, select = select_cols, showProgress = FALSE)
+        actual_cols <- intersect(select_cols, names(fread(f, nrows = 0)))
+        fread(f, select = actual_cols, showProgress = FALSE)
       }
-      dt[, sample_id := gsub("^[^_]+_|\\.tsv$", "", basename(f))]
+      
+      if (nrow(dt) == 0) return(NULL)
+      
+      dt[, sample_id := matched_sample]
       dt
     }),
     use.names = TRUE, fill = TRUE
@@ -104,36 +105,35 @@ load_tsv_dir <- function(paths, select_cols = NULL) {
 
 load_metadata <- function(path) {
   ext <- tolower(tools::file_ext(path))
-  if (ext %in% c("xlsx", "xls")) {
-    as.data.table(readxl::read_excel(path))
-  } else {
-    fread(path)
-  }
+  dt  <- if (ext %in% c("xlsx", "xls")) as.data.table(readxl::read_excel(path)) else fread(path)
+  dt[, sample_id := as.character(sample_id)]
+  dt[, name      := as.character(name)]
+  dt[, date      := as.character(date)]
+  dt
 }
 
 # ==========================================================================
 # MODE: pathway
 # ==========================================================================
 run_pathway <- function() {
-  files <- unlist(snakemake$input$data)
-  meta <- load_metadata(snakemake$input$metadata)
-
-  all_data <- load_tsv_dir(files, select_cols = c("level_3", VALUE_COL))
+  meta <- load_metadata(METADATA)
+  all_data <- load_tsv_dir_dynamic(DATA, meta, select_cols = c(PATHWAY_LEVEL, VALUE_COL))
 
   setkey(all_data, sample_id)
   setkey(meta, sample_id)
   all_data <- all_data[meta, nomatch = 0L]
 
-  write_parquet(all_data, snakemake$output$parquet)
+  write_parquet(all_data, PARQUET)
 
   # Aggregate per condition × date × pathway
   agg <- all_data[, .(total = sum(get(VALUE_COL), na.rm = TRUE)),
-    by = .(name, date, level_3)
+    by = .(name, date, get(PATHWAY_LEVEL))
   ]
+  setnames(agg, "get", PATHWAY_LEVEL)
 
   agg[, category := {
     r <- frank(-total, ties.method = "random")
-    fifelse(r <= TOP_N, level_3, "Others")
+    fifelse(r <= TOP_N, as.character(get(PATHWAY_LEVEL)), "Others")
   }, by = .(name, date)]
 
   final_dt <- agg[, .(sum_val = sum(total)), by = .(name, date, category)]
@@ -142,7 +142,7 @@ run_pathway <- function() {
   pal <- make_palette(unique(final_dt$category))
   final_dt[, category := factor(category, levels = pal$levels)]
 
-  pdf(snakemake$output$pdf, width = 12, height = 8)
+  pdf(PDF, width = 12, height = 8)
   lapply(split(final_dt, by = "name", keep.by = TRUE), function(df_cond) {
     print(stacked_bar(df_cond, "date", "pct", "category",
       pal$colours,
@@ -159,98 +159,77 @@ run_pathway <- function() {
 # MODE: taxonomy
 # ==========================================================================
 run_taxonomy <- function() {
-  load_source <- function(path, source_label) {
-    files <- list.files(path, pattern = "\\.tsv$", full.names = TRUE)
-    if (!length(files)) {
-      warning("No files in: ", path)
-      return(NULL)
-    }
-    rbindlist(lapply(files, function(f) {
-      dt <- fread(f, sep = "\t", showProgress = FALSE)
-      parts <- strsplit(gsub("\\.tsv$", "", basename(f)), "_")[[1]]
-      dt[, `:=`(
-        Original_Taxon_Label = names(dt)[1],
-        Source_Type          = source_label,
-        Digesteur            = parts[3],
-        Date                 = as.Date(parts[4], format = "%y%m%d")
-      )]
-    }), use.names = TRUE, fill = TRUE)
-  }
-
-  sources <- list(
-    "Graph Intersec" = snakemake$input$intersec,
-    "Graph 3kb"      = snakemake$input$contigs
-  )
-
-  dt_all <- rbindlist(
-    Filter(
-      Negate(is.null),
-      mapply(load_source, sources, names(sources), SIMPLIFY = FALSE)
-    ),
-    use.names = TRUE, fill = TRUE
-  )
+  meta   <- load_metadata(METADATA)
+  dt_all <- load_tsv_dir_dynamic(DATA, meta)
 
   # Vectorised taxonomy split
   tax_split <- dt_all[, tstrsplit(Taxonomy, ";\\s*",
     fixed = FALSE,
     names = TAX_RANKS, fill = "Unclassified"
   )]
+  
   for (col in TAX_RANKS) {
-    tax_split[get(col) == "" | get(col) == " ", (col) := "Unclassified"]
+    tax_split[get(col) == "" | get(col) == " " | is.na(get(col)), (col) := "Unclassified"]
   }
 
   dt_taxo <- cbind(dt_all, tax_split)
-  write_parquet(dt_taxo, snakemake$output$parquet)
+  
+  setkey(dt_taxo, sample_id)
+  setkey(meta, sample_id)
+  dt_taxo <- meta[dt_taxo, nomatch = 0L]
+  
+  write_parquet(dt_taxo, PARQUET)
 
+  # Utilisation dynamique du rang cible configuré (ex: "Phylum", "Genus")
   setnames(dt_taxo, TARGET_RANK, "Taxon")
 
-  agg <- dt_taxo[, .(RPKM_Sum = sum(RPKM, na.rm = TRUE)),
-    by = .(Source_Type, Digesteur, Date, Taxon, Original_Taxon_Label)
+  # Agrégation par Digesteur (name), Date et Taxon
+  agg <- dt_taxo[, .(RPKM_Sum = sum(get(VALUE_COL), na.rm = TRUE)),
+    by = .(name, date, Taxon)
   ]
-  agg[, Abund_Pct := (RPKM_Sum / sum(RPKM_Sum)) * 100, by = .(Digesteur, Date)]
+  agg[, Abund_Pct := (RPKM_Sum / sum(RPKM_Sum)) * 100, by = .(name, date)]
 
-  # Top N per source
-  top_taxa <- agg[, .(G = sum(RPKM_Sum)), by = .(Source_Type, Taxon)][
-    , .SD[order(-G)[seq_len(min(TOP_N, .N))]],
-    by = Source_Type
-  ][, .(Source_Type, Taxon)]
+  # Top N global pour cet ensemble de données
+  top_taxa <- agg[, .(G = sum(RPKM_Sum)), by = Taxon][
+    order(-G)[seq_len(min(TOP_N, .N))], Taxon
+  ]
 
-  agg[top_taxa, Taxon_Final := Taxon, on = .(Source_Type, Taxon)]
-  agg[is.na(Taxon_Final), Taxon_Final := "Others"]
+  agg[, Taxon_Final := fifelse(Taxon %in% top_taxa, Taxon, "Others")]
 
   final_dt <- agg[, .(Abund_Pct = sum(Abund_Pct)),
-    by = .(Source_Type, Digesteur, Date, Taxon_Final, Original_Taxon_Label)
+    by = .(name, date, Taxon_Final)
   ]
 
-  pdf(snakemake$output$pdf, width = 12, height = 8)
-  lapply(unique(final_dt$Source_Type), function(src) {
-    lapply(unique(final_dt[Source_Type == src, Digesteur]), function(r) {
-      plot_dt <- final_dt[Source_Type == src & Digesteur == r]
-      if (!nrow(plot_dt)) {
-        return(invisible(NULL))
-      }
+  # 3. Génération des graphiques (Une page par Digesteur)
+  pdf(PDF, width = 12, height = 8)
+  
+  lapply(unique(final_dt$name), function(r) {
+    plot_dt <- final_dt[name == r]
+    if (!nrow(plot_dt)) {
+      return(invisible(NULL))
+    }
 
-      taxon_order <- c(
-        setdiff(plot_dt[, .(t = sum(Abund_Pct)), by = Taxon_Final][order(-t), Taxon_Final], "Others"),
-        "Others"
-      )
-      plot_dt[, Taxon_Final := factor(Taxon_Final, levels = taxon_order)]
-      setorder(plot_dt, Date)
+    taxon_order <- c(
+      setdiff(plot_dt[, .(t = sum(Abund_Pct)), by = Taxon_Final][order(-t), Taxon_Final], "Others"),
+      "Others"
+    )
+    plot_dt[, Taxon_Final := factor(Taxon_Final, levels = taxon_order)]
+    setorder(plot_dt, date)
 
-      pal <- setNames(
-        c(viridisLite::viridis(length(taxon_order) - 1L, option = "turbo"), "#000000"),
-        taxon_order
-      )
+    pal <- setNames(
+      c(viridisLite::viridis(length(taxon_order) - 1L, option = "turbo"), "#000000"),
+      taxon_order
+    )
 
-      print(stacked_bar(plot_dt, "Date", "Abund_Pct", "Taxon_Final",
-        pal,
-        title = paste("Abundance:", TARGET_RANK, "| Digesteur", r, "|", src),
-        subtitle = NULL,
-        x_lab = "Date", y_lab = "Relative Abundance (%)",
-        fill_lab = TARGET_RANK
-      ))
-    })
+    print(stacked_bar(plot_dt, "date", "Abund_Pct", "Taxon_Final",
+      pal,
+      title = paste("Abundance:", TARGET_RANK, "| Digesteur", r),
+      subtitle = NULL,
+      x_lab = "Date", y_lab = "Relative Abundance (%)",
+      fill_lab = TARGET_RANK
+    ))
   })
+  
   dev.off()
 }
 
@@ -258,46 +237,47 @@ run_taxonomy <- function() {
 # MODE: organisms
 # ==========================================================================
 run_organisms <- function() {
-  files <- unlist(snakemake$input$data)
-  meta <- load_metadata(snakemake$input$metadata)
+  meta <- load_metadata(METADATA)
+  dt   <- load_tsv_dir_dynamic(DATA, meta)
 
-  dt <- load_tsv_dir(files)
+  # Security: check if the configured pre-split column exists
+  if (!TAXON_RANK %in% names(dt)) {
+    stop(sprintf("The taxonomy column [%s] is missing from the input file.", TAXON_RANK))
+  }
 
-  # Vectorised genus extraction
-  dt[, Genus := {
-    g <- trimws(sapply(strsplit(Taxonomy, ";"), `[`, TAXON_RANK))
-    fifelse(is.na(g) | g %in% c("NA", ""), "Unclassified Genus", g)
-  }]
+  # Clean unassigned fields on the targeted column directly
+  dt[get(TAXON_RANK) == "" | get(TAXON_RANK) == " " | is.na(get(TAXON_RANK)), (TAXON_RANK) := "Unclassified"]
 
   setkey(dt, sample_id)
   setkey(meta, sample_id)
   dt <- meta[dt, nomatch = 0L]
 
-  write_parquet(dt, snakemake$output$parquet)
+  write_parquet(dt, PARQUET)
 
-  # Global top genera
-  genus_global <- dt[, .(Global_RPKM = sum(RPKM, na.rm = TRUE)), by = Genus]
-  setorder(genus_global, -Global_RPKM)
-  top_genera <- genus_global[seq_len(min(TOP_N, .N)), Genus]
+  # Global dynamic aggregation using the targeted pre-split column
+  taxa_config_global <- dt[, .(Global_RPKM = sum(get(VALUE_COL), na.rm = TRUE)), by = c(TAXON_RANK)]
+  setorder(taxa_config_global, -Global_RPKM)
+  
+  top_genera <- taxa_config_global[seq_len(min(TOP_N, .N)), get(TAXON_RANK)]
 
   # --- Plot 1: global horizontal bar ---
-  plot1_dt <- genus_global[, .(
-    Genus_Grouped = fifelse(Genus %in% top_genera, Genus, "Others"),
+  plot1_dt <- taxa_config_global[, .(
+    Taxa_Grouped = fifelse(get(TAXON_RANK) %in% top_genera, get(TAXON_RANK), "Others"),
     Global_RPKM
-  )][, .(Total_RPKM = sum(Global_RPKM)), by = Genus_Grouped]
+  )][, .(Total_RPKM = sum(Global_RPKM)), by = Taxa_Grouped]
   setorder(plot1_dt, Total_RPKM)
-  plot1_dt[, Genus_Grouped := factor(Genus_Grouped, levels = Genus_Grouped)]
+  plot1_dt[, Taxa_Grouped := factor(Taxa_Grouped, levels = Taxa_Grouped)]
 
   p_global <- ggplot(
     plot1_dt,
-    aes(x = Total_RPKM, y = Genus_Grouped, fill = Genus_Grouped)
+    aes(x = Total_RPKM, y = Taxa_Grouped, fill = Taxa_Grouped)
   ) +
     geom_col(show.legend = FALSE) +
     scale_fill_viridis_d(option = "turbo") +
     labs(
-      title = sprintf("Global Abundance — Top %d Genera", TOP_N),
-      subtitle = "Aggregated data from all digesters",
-      x = "Total RPKM (Summed)", y = "Genus"
+      title = sprintf("Global Abundance — Top %d %ss", TOP_N, TAXON_RANK),
+      subtitle = "Aggregated data from all matched samples",
+      x = paste("Total", VALUE_COL, "(Summed)"), y = TAXON_RANK
     ) +
     theme_minimal() +
     theme(
@@ -305,27 +285,28 @@ run_organisms <- function() {
       plot.title = element_text(face = "bold", size = 14)
     )
 
-  # --- Plot 2: stacked per digester × date ---
+  # --- Plot 2: stacked per sample name × date ---
   plot2_dt <- dt[!is.na(name) & !is.na(date),
-    .(Total_RPKM = sum(RPKM, na.rm = TRUE)),
-    by = .(name, date, Genus)
+    .(Total_RPKM = sum(get(VALUE_COL), na.rm = TRUE)),
+    by = c("name", "date", TAXON_RANK)
   ]
-  plot2_dt[, Genus_Grouped := fifelse(Genus %in% top_genera, Genus, "Others")]
-  plot2_dt <- plot2_dt[, .(Total_RPKM = sum(Total_RPKM)), by = .(name, date, Genus_Grouped)]
+  
+  plot2_dt[, Taxa_Grouped := fifelse(get(TAXON_RANK) %in% top_genera, get(TAXON_RANK), "Others")]
+  plot2_dt <- plot2_dt[, .(Total_RPKM = sum(Total_RPKM)), by = .(name, date, Taxa_Grouped)]
   setorder(plot2_dt, Total_RPKM)
-  plot2_dt[, Genus_Grouped := factor(Genus_Grouped, levels = unique(Genus_Grouped))]
+  plot2_dt[, Taxa_Grouped := factor(Taxa_Grouped, levels = unique(Taxa_Grouped))]
 
   p_stacked <- ggplot(
     plot2_dt,
-    aes(x = as.factor(date), y = Total_RPKM, fill = Genus_Grouped)
+    aes(x = as.factor(date), y = Total_RPKM, fill = Taxa_Grouped)
   ) +
     geom_col(colour = "white", linewidth = 0.1) +
     scale_fill_viridis_d(option = "turbo") +
     facet_wrap(~name, scales = "free_x") +
     labs(
-      title = "Composition of Bacterial Genera by Digester",
-      subtitle = "Vertical stacked bars | RPKM values",
-      x = "Sampling Date", y = "Total RPKM", fill = "Genera"
+      title = sprintf("Composition of Bacterial %ss", TAXON_RANK),
+      subtitle = paste("Vertical stacked bars |", VALUE_COL, "values"),
+      x = "Sampling Date", y = VALUE_COL, fill = TAXON_RANK
     ) +
     theme_minimal() +
     theme(
@@ -337,7 +318,7 @@ run_organisms <- function() {
       plot.title = element_text(face = "bold", size = 16)
     )
 
-  pdf(snakemake$output$pdf, width = 14, height = 8)
+  pdf(PDF, width = 14, height = 8)
   print(p_global)
   print(p_stacked)
   dev.off()
@@ -353,5 +334,4 @@ switch(MODE,
   stop("Unknown mode: ", MODE, ". Use 'pathway', 'taxonomy', or 'organisms'.")
 )
 
-message("Done. PDF: ", snakemake$output$pdf)
-message("Done. Parquet: ", snakemake$output$parquet)
+message("✓ Execution completed. Output written to ", PDF, " and ", PARQUET)

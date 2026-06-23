@@ -1,70 +1,103 @@
-library(data.table)
-library(phyloseq)
-library(arrow)
-library(readxl)
+################################################################################
+# Project : "MicrobExplorer"
+# Script  : "Analysis : Phyloseq"
+# Author  : "Yann Le Bihan"
+# Date    : "2025-12-01"
+# Link    : https://github.com/Yann-LBH/MicrobExplorer
+################################################################################
 
 # ==========================================================================
 # Configuration (Snakemake)
 # ==========================================================================
-data <- snakemake[["input"]][["data_dir"]]
-metadata <- snakemake[["input"]][["metadata"]]
-rds_save <- snakemake[["output"]][["rds"]]
+library(data.table)
+library(phyloseq)
+library(readxl)
+
+# Inputs / Outputs
+DATA     <- as.character(snakemake@input[["data"]])
+METADATA <- as.character(snakemake@input[["metadata"]])
+RDS      <- as.character(snakemake@output[["rds"]])
+
+# Paramètres (avec valeurs par défaut au cas où)
+VALUE_COL <- as.character(snakemake@params[["value_col"]])[1]
 
 # ==========================================================================
-# 1. Data Import
+# 1. Chargement des métadonnées et des fichiers TSV
 # ==========================================================================
-# Metadata
-meta_dt <- as.data.table(read_xlsx(metadata))
+meta_dt <- as.data.table(read_xlsx(METADATA))
+meta_dt[, sample_id := as.character(sample_id)]
 setkey(meta_dt, sample_id)
 
-# KO Data - Fast multi-file loading
-files <- list.files(data, pattern = "annotated_.*\\.tsv", full.names = TRUE)
-
-df_list <- lapply(files, function(f) {
-  # Fast ID extraction
-  sample_nm <- gsub("annotated_agreg_|\\.tsv", "", basename(f))
-  dt <- fread(f, select = c(
-    "ko", "standardization", "ec_number",
-    "level_1", "level_2", "level_3", "gene_description"
-  ))
-  dt[, sample_id := sample_nm]
+df_list <- lapply(DATA, function(f) {
+  file_name <- basename(f)
+  matched_sample <- meta_dt[sapply(sample_id, function(sid) grepl(sid, file_name)), sample_id]
+  
+  if (length(matched_sample) == 0 || is.na(matched_sample)) return(NULL)
+  
+  dt <- fread(f, showProgress = FALSE)
+  if (nrow(dt) == 0) return(NULL)
+  
+  dt[, sample_id := matched_sample]
   return(dt)
 })
 
-all_kos <- rbindlist(df_list)
+all_data <- rbindlist(Filter(Negate(is.null), df_list), use.names = TRUE, fill = TRUE)
 
 # ==========================================================================
-# 2. Matrix Construction
+# 2. Détection Automatique du Type de Données (KEGG vs Taxonomie)
+# ==========================================================================
+if ("ko" %in% names(all_data)) {
+  # --- Configuration MODE KEGG ---
+  id_col   <- "ko"
+  tax_cols <- intersect(c("ec_number", "level_1", "level_2", "level_3", "gene_description"), names(all_data))
+  message("🧬 Mode détecté : Fonctionnel (KEGG)")
+} else {
+  # --- Configuration MODE TAXONOMIE (Reads ou Contigs) ---
+  # On cherche un identifiant unique pour les lignes (le nom scientifique ou l'ID de taxon)
+  id_col   <- intersect(c("scientific_name", "tax_id", "Taxon"), names(all_data))[1]
+  tax_cols <- c("domain", "kingdom", "phylum", "class", "order", "family", "genus", "species")
+  tax_cols <- intersect(tax_cols, names(all_data))
+  message("🦠 Mode détecté : Taxonomique (Reads/Contigs)")
+}
+
+# Sécurité critique : On vérifie que la colonne d'abondance demandée existe
+if (!VALUE_COL %in% names(all_data)) {
+  stop(sprintf("Erreur : La colonne d'abondance [%s] n'existe pas dans ces fichiers.", VALUE_COL))
+}
+
+# ==========================================================================
+# 3. Construction des Composants Phyloseq
 # ==========================================================================
 
-# --- A. OTU TABLE (Counts per KO) ---
-# Data.table dcast is significantly faster than pivot_wider
-otu_dt <- dcast(all_kos, ko ~ sample_id,
-  value.var = "standardization",
-  fun.aggregate = sum,
-  fill = 0
-)
+# --- A. OTU TABLE (Matrice d'abondance) ---
+formula_str <- as.formula(paste(id_col, "~ sample_id"))
+otu_dt <- dcast(all_data, formula_str, value.var = VALUE_COL, fun.aggregate = sum, fill = 0)
 
-otu_mat <- as.matrix(otu_dt, rownames = "ko")
+otu_mat <- as.matrix(otu_dt, rownames = id_col)
+mode(otu_mat) <- "numeric"
 
-# --- B. TAX TABLE (KEGG Hierarchy) ---
-tax_dt <- unique(all_kos[, .(ko, ec_number, level_1, level_2, level_3, gene_description)])
-tax_mat <- as.matrix(tax_dt, rownames = "ko")
+# --- B. TAX TABLE (Table de classification) ---
+tax_dt  <- unique(all_data[, c(id_col, tax_cols), with = FALSE])
+tax_mat <- as.matrix(tax_dt, rownames = id_col)
 
-# --- C. Metadata preparation ---
-sample_df <- as.data.frame(meta_dt)
+# --- C. SAMPLE DATA (Métadonnées) ---
+sample_df <- as.data.frame(meta_dt[sample_id %in% colnames(otu_mat)])
 rownames(sample_df) <- sample_df$sample_id
 
 # ==========================================================================
-# 3. Phyloseq Initialization & Export
+# 4. Assemblage, Normalisation et Sauvegarde
 # ==========================================================================
-ps_kegg <- phyloseq(
+ps_final <- phyloseq(
   otu_table(otu_mat, taxa_are_rows = TRUE),
   tax_table(tax_mat),
   sample_data(sample_df)
 )
 
-# --- Export to RDS ---
-saveRDS(ps_kegg, rds_save)
+# Normalisation automatique si on part de reads bruts (évite les biais de séquençage)
+if (VALUE_COL == "reads_count") {
+  ps_final <- transform_sample_counts(ps_final, function(x) x / sum(x))
+  message("✓ Normalisation effectuée : transformation des counts bruts en abondances relatives.")
+}
 
-message("✓ Phyloseq RDS object created.")
+saveRDS(ps_final, RDS)
+message("✓ Objet Phyloseq RDS créé avec succès : ", RDS)

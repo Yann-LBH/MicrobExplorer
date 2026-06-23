@@ -22,23 +22,26 @@ def kaiju_analyze(PATH_IN, PATH_OUT):
 
     with open(PATH_IN, "r", encoding="utf-8") as f:
         for line in f:
-            # Kaiju sépare généralement les column par des tabulations
+            # Kaiju generally separates columns by tabs
             column = line.strip().split("\t")
 
-            # On vérifie si la line est classée ('C') et possède bien un ID taxon
+            # Check if line is classified ('C') and has a taxon ID
             if len(column) >= 3 and column[0] == "C":
-                taxon_id = column[2]  # La 3ème colonne (ex: 35786)
+                taxon_id = column[2]  # 3rd column (e.g., 35786)
 
                 counter[taxon_id] = counter.get(taxon_id, 0) + 1
 
-    # Écriture des résultats
+    # Writing results in column format
     if counter:
         with open(PATH_OUT, "w", encoding="utf-8") as f_out:
-            # On trie par nombre d'occurrences (du plus grand au plus petit)
+            # Write header
+            f_out.write("Read_ID\tCount\n")
+            
+            # Sort by counts (highest to lowest)
             for taxon, total in sorted(
                 counter.items(), key=lambda x: x[1], reverse=True
             ):
-                f_out.write(f"Taxon {taxon} : {total} reads\n")
+                f_out.write(f"{taxon}\t{total}\n")
         return True
     return False
 
@@ -55,7 +58,6 @@ if __name__ == "__main__":
     if process:
         logging.info(
             f"[READS_COUNTING] SUCCESS | Sample: {sample_name} | "
-            ""
             f"Count: {process} | Output: {PATH_OUT}"
         )
     else:

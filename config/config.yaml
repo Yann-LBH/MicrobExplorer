@@ -62,7 +62,7 @@ run_qc:           True
 # Data types used for each plot/analysis type
 
 datatypes:
-  phyloseq: ["contigs"]
+  phyloseq: ["reads","contigs","kegg"]
   deseq2: ["contigs", "kegg"]
   stackedbarplot:
     standard:
@@ -70,18 +70,26 @@ datatypes:
       taxonomy:  ["reads", "contigs"]
       organisms: ["reads", "contigs"]
     deseq2:    ["contigs", "kegg"]
-  heatmap: ["reads", "contigs"]
+  heatmap: ["reads", "contigs", "kegg"]
   volcano: ["contigs", "kegg"]
-  qc: ["reads", "contigs"]
+  qc: ["reads", "contigs", "kegg"]
 
 
 # General parameters
 
-deseq_label: "Genus"  # Options possibles : "Contig_ID", "Phylum", "Genus", etc.
+# Analysis parameters
+
+# Abundance columns
+phyloseq:
+    reads: "CPM"
+    contigs: "RPKM"
+    kegg: "standardization"
 
 # DESeq2 contrasts to generate
 # Change this list to use only the contrasts you need
-deseq2_contrasts: ["ref", "date", "combo"]  # Options: "ref", "date", "combo"
+deseq2:
+  contrasts: ["ref", "date", "combo"]  # Options: "ref", "date", "combo"
+  ref: "TD1"
 
 # Reads parameters
 reads:
@@ -114,21 +122,6 @@ kegg:
 
 # Graphic parameters
 
-#utile ?
-taxonomic_levels:
-  - "Phylum"
-  - "Class"
-  - "Order"
-  - "Family"
-  - "Genus"
-  - "Species"
-
-pathway_levels:
-  - "level_1"
-  - "level_2"
-  - "level_3"
-  - "gene_description"
-
 plots:
 # Global
   shared:
@@ -146,13 +139,14 @@ plots:
 # Plots
   barplot:
     top_n: 19
-    taxon_rank: "Class"
+    taxon_rank: "genus"
 
   stackedbarplot:
     title: "Top 10 taxons differentially abundant"
     subtitle: "DESeq2 results"
     top_n: 10
-    taxon_rank: "Class"
+    taxon_rank: "genus" #eg : "phylum", class", "order", "family", "genus", "species"
+    pathway_level: "level_3" #eg : "level_1", "level_2", "level_3", "gene_description"
 
   pca:
     color_by: "condition"

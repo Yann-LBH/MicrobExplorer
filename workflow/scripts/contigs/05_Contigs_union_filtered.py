@@ -7,7 +7,6 @@
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
-import os
 import logging
 import pandas as pd
 
@@ -18,7 +17,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-
 def get_union_and_extract(
     ABUNDANCE: str, RPKM_FILTERED: str, RAW_DATA: str, PATH_OUT: str
 ) -> int:
@@ -27,12 +25,20 @@ def get_union_and_extract(
     puis extraction des lignes correspondantes depuis le fichier source.
     Retourne le nombre de contigs extraits.
     """
+    
     ids_abund = pd.read_csv(ABUNDANCE, sep="\t", usecols=["Contig_ID"])["Contig_ID"]
     ids_rpkm = pd.read_csv(RPKM_FILTERED, sep="\t", usecols=["Contig_ID"])["Contig_ID"]
 
     target_ids = set(ids_abund).union(ids_rpkm)
 
-    df_source = pd.read_csv(RAW_DATA, sep="\t")
+    df_source = pd.read_csv(
+        RAW_DATA,
+        sep=r"\s+",
+        header=None,
+        names=["Contig_ID", "Length", "Reads_Mapped", "Reads_Unmapped"],
+        engine="python",
+    )
+
     df_out = df_source[df_source["Contig_ID"].isin(target_ids)]
     df_out.to_csv(PATH_OUT, sep="\t", index=False)
 

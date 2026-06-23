@@ -40,7 +40,7 @@ def run_annotation(PATH_IN: str, PATH_OUT: str, taxonomy: pd.Series) -> int:
 
     df["Taxonomy"] = df["Contig_ID"].map(taxonomy).fillna("Unclassified")
 
-    df = df.sort_values("RPKM", ascending=False)
+    #df = df.sort_values("RPKM", ascending=False)
     df.to_csv(PATH_OUT, sep="\t", index=False)
 
     return len(df)

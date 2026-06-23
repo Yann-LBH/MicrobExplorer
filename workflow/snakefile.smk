@@ -37,7 +37,7 @@ KEGG_TREATMENT = config["output_path"]["treatment"] + "kegg/"
 
 TREATMENT_SOURCES = {
     "reads": expand(
-        READS_TREATMENT + "3.Annotated/annotated_{sample}_reads.tsv", sample=SAMPLES
+        READS_TREATMENT + "4.Annotated/annotated_{sample}_reads.tsv", sample=SAMPLES
     ),
     "contigs": expand(
         CONTIGS_TREATMENT + "6.Annotated/annotated_{sample}_contigs.tsv", sample=SAMPLES
@@ -55,7 +55,8 @@ QC_STEPS = {
         "brut": ("Data", "reads_{sample}.kaijuNR"),
         "counted": ("1.Counted", "counted_{sample}_reads.tsv"),
         "filtered": ("2.Filtered", "filtered_{sample}_reads.tsv"),
-        "final": ("3.Annotated", "annotated_{sample}_reads.tsv"),
+        "cpm": ("3.CPM", "cpm_{sample}_reads.tsv"),
+        "final": ("4.Annotated", "annotated_{sample}_reads.tsv"),
     },
     "contigs": {
         "brut": ("Data", "count-contigs-coassembly-{sample}.tsv"), #need adaptation
@@ -69,9 +70,9 @@ QC_STEPS = {
 }
 
 PLOT_PARAMS = {
-    "reads": {"value_col": "Reads", "label": "Read counts"},
+    "reads": {"value_col": "CPM", "label": "CPM"},
     "contigs": {"value_col": "RPKM", "label": "RPKM"},
-    "kegg": {"value_col": "RPKM", "label": "RPKM"},
+    "kegg": {"value_col": "standardization", "label": "standardization"},
 }
 
 
@@ -87,7 +88,8 @@ def filter_active_sources(sources_list):
 def phyloseq(pattern, sources_key):
     if not config["run_phyloseq"]:
         return []
-    return expand(pattern, source=config["datatypes"][sources_key])
+    active_sources = filter_active_sources(config["datatypes"][sources_key])
+    return expand(pattern, source=active_sources)
 
 
 def deseq2(pattern, sources_key):
@@ -124,7 +126,7 @@ def get_targets():
     if config["run_reads"]:
         targets.extend(
             expand(
-                READS_TREATMENT + "3.Annotated/annotated_{sample}_reads.tsv",
+                READS_TREATMENT + "4.Annotated/annotated_{sample}_reads.tsv",
                 sample=SAMPLES,
             )
         )
@@ -296,7 +298,7 @@ rule download_taxonomy:
         )
 
 
-rule download_input_pathway:
+rule download_pathway:
     output:
         tsv=config["input_path"]["pathway_bakta"]["local_path"]
     conda:
@@ -347,7 +349,7 @@ rule run_plot_qc:
 # ==========================================================================
 
 
-rule reads_countig:
+rule reads_counting:
     input:
         raw_data=lambda w: READS_FILES[w.sample]
     output:
@@ -371,19 +373,30 @@ rule reads_filter:
         os.path.abspath("workflow/scripts/reads/02_Reads_filter.py")
 
 
+rule reads_CPM:
+    input:
+        data=READS_TREATMENT + "2.Filtered/filtered_{sample}_reads.tsv"
+    output:
+        cpm=READS_TREATMENT + "3.CPM/cpm_{sample}_reads.tsv"
+    conda:
+        "envs/py_env.yaml"
+    script:
+        os.path.abspath("workflow/scripts/reads/03_Reads_CPM.py")
+
+
 rule reads_add_taxaname:
     input:
-        data=READS_TREATMENT + "2.Filtered/filtered_{sample}_reads.tsv",
+        data=READS_TREATMENT + "3.CPM/cpm_{sample}_reads.tsv",
         taxonomy=config["input_path"]["taxonomy_ncbi"]["local_path"]
     output:
-        taxaname=READS_TREATMENT + "3.Annotated/annotated_{sample}_reads.tsv"
+        taxaname=READS_TREATMENT + "4.Annotated/annotated_{sample}_reads.tsv"
     conda:
         "envs/py_env.yaml"
     params:
         top_n=config["reads"]["top_n"],
         noise=config["reads"]["noise"]
     script:
-        os.path.abspath("workflow/scripts/reads/03_Reads_add_taxaname.py")
+        os.path.abspath("workflow/scripts/reads/04_Reads_add_taxaname.py")
 
 
 # ==========================================================================
@@ -453,7 +466,7 @@ rule contigs_rpkm_filter:
     conda:
         "envs/py_env.yaml"
     params:
-        rpkm_threshold=config["contigs"]["rpkm_threshold"],
+        rpkm_threshold=config["contigs"]["rpkm_threshold"]
     script:
         os.path.abspath("workflow/scripts/contigs/04_Contigs_RPKM_filter.py")
 
@@ -588,7 +601,7 @@ rule plot_stackedbarplot_deseq2:
         subtitle=config["plots"]["stackedbarplot"]["subtitle"],
         padj=config["plots"]["volcano"]["pvalue_threshold"],
         lfc=config["plots"]["volcano"]["lfc_treshold"],
-        contrasts=config["deseq2_contrasts"],
+        contrasts=config["deseq2"]["contrasts"],
         top_n=config["plots"]["stackedbarplot"]["top_n"]
     script:
         os.path.abspath("workflow/scripts/plots/Stackedbarplot_from_DESeq2.R")
@@ -621,7 +634,8 @@ rule plot_stackedbarplot:
         mode=lambda w: FILENAME_TO_MODE.get(w.filename, w.filename),
         top_n=config["plots"]["stackedbarplot"]["top_n"],
         target_rank=config["plots"]["stackedbarplot"]["taxon_rank"],
-        value_col=lambda w: PLOT_PARAMS[w.source]["value_col"]
+        value_col=lambda w: PLOT_PARAMS[w.source]["value_col"],
+        pathway_level=config["plots"]["stackedbarplot"]["pathway_level"],
     script:
         os.path.abspath("workflow/scripts/plots/Stackedbarplot_abundance.R")
 
@@ -695,7 +709,7 @@ rule plot_volcano_DESeq2:
     params:
         padj=config["plots"]["volcano"]["pvalue_threshold"],
         lfc=config["plots"]["volcano"]["lfc_treshold"],
-        contrast=config["deseq2_contrasts"]
+        contrast=config["deseq2"]["contrasts"]
     script:
         os.path.abspath("workflow/scripts/plots/Volcano_from_DESeq2.R")
 
@@ -725,6 +739,8 @@ rule run_phyloseq:
         metadata=config["input_path"]["metadata"]
     output:
         rds=pjoin(config["output_path"]["rds"], "{source}", "phyloseq_{source}.rds")
+    params:
+        value_col=lambda w: config["phyloseq"][w.source]
     conda:
         "envs/r_env.yaml"
     script:
@@ -745,7 +761,8 @@ rule run_deseq2:
     conda:
         "envs/r_env.yaml"
     params:
-        contrasts=config["deseq2_contrasts"]
+        contrasts=config["deseq2"]["contrasts"],
+        ref=config["deseq2"]["ref"]
     script:
         os.path.abspath("workflow/scripts/analysis/DESeq2.R")
 
@@ -792,7 +809,7 @@ rule generate_pipeline_report:
             check_files(
                 "Reads Annotations (TSV)",
                 expand(
-                    READS_TREATMENT + "3.Annotated/annotated_{sample}_reads.tsv",
+                    READS_TREATMENT + "4.Annotated/annotated_{sample}_reads.tsv",
                     sample=SAMPLES,
                 ),
             )
@@ -960,7 +977,6 @@ rule generate_pipeline_report:
                     ),
                 )
         
-        # CORRECTION : open(snakemake.output.report) au lieu de open(output.report)
         # --- Write the final markdown-like report ---
         with open(snakemake.output.report, "w") as f:
             f.write("==================================================\n")

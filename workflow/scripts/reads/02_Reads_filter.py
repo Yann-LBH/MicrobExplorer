@@ -17,6 +17,7 @@ logging.basicConfig(
 )
 
 
+# All script comments are provided in English as requested.
 def filtering_kaiju(PATH_IN, PATH_OUT, COUNT_THRESHOLD):
     """Filters Kaiju output lines based on a minimum read count threshold."""
     try:
@@ -24,20 +25,25 @@ def filtering_kaiju(PATH_IN, PATH_OUT, COUNT_THRESHOLD):
             PATH_OUT, "w", encoding="utf-8"
         ) as f_out:
 
-            for line in f_in:
-                # Split line by spaces to isolate columns
-                columns = line.strip().split(" ")
+            # Read and carry over the header line
+            header = f_in.readline()
+            if header:
+                f_out.write(header)
 
-                if len(columns) >= 4:
+            for line in f_in:
+                # Split line by tabs to isolate columns (taxon_id, Reads)
+                columns = line.strip().split("\t")
+
+                if len(columns) >= 2:
                     try:
-                        # Convert read count column to integer
-                        number_reads = int(columns[3])
+                        # Convert read count column (2nd column, index 1) to integer
+                        number_reads = int(columns[1])
 
                         # Keep line only if it meets or exceeds the threshold
                         if number_reads >= COUNT_THRESHOLD:
                             f_out.write(line)
                     except ValueError:
-                        # Skip header lines or unexpected text formatting
+                        # Skip unexpected text formatting
                         continue
 
         return True
@@ -59,8 +65,7 @@ if __name__ == "__main__":
     if process:
         logging.info(
             f"[READS_FILTER] SUCCESS | Sample: {sample_name} | "
-            ""
-            f"Count: {process} | Output: {PATH_OUT}"
+            f"Output: {PATH_OUT}"
         )
     else:
         logging.error(
