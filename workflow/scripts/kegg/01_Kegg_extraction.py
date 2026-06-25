@@ -24,8 +24,8 @@ HEADER = ["contig", "kegg", "gene_length"]
 
 def process_gff_kegg(PATH_IN: str, PATH_OUT: str) -> int:
     """
-    Parse un fichier GFF3 et extrait les annotations KEGG en streaming.
-    Retourne le nombre d'annotations extraites.
+    Parses a GFF3 file and extracts KEGG annotations in real time.
+    Returns the number of annotations extracted.
     """
     count = 0
 

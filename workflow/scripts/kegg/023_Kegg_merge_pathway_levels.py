@@ -26,7 +26,7 @@ FILL_VALUES = {
 
 
 def load_reference(PATHWAY: str) -> pd.DataFrame:
-    """Charge et prépare la table de référence KEGG."""
+    """Load and prepare the KEGG reference table."""
     ref = pd.read_csv(PATHWAY, sep="\t")
     ref.columns = ref.columns.str.strip()
     ref["ko"] = ref["ko"].astype(str).str.replace("ko:", "", regex=False)
@@ -39,8 +39,8 @@ def load_reference(PATHWAY: str) -> pd.DataFrame:
 
 def annotate_with_hierarchy(PATH_IN: str, ref: pd.DataFrame, PATH_OUT: str) -> int:
     """
-    Jointure KO -> hiérarchie KEGG et ajustement pondéré par weight.
-    Retourne le nombre de lignes annotées.
+    KO join -> KEGG hierarchy and weight-adjusted results.
+    Returns the number of annotated rows.
     """
     df = pd.read_csv(PATH_IN, sep="\t")
 

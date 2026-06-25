@@ -20,14 +20,14 @@ logging.basicConfig(
 
 def aggregate_by_ko(PATH_IN: str, PATH_OUT: str) -> int:
     """
-    Agrège par code KEGG en sommant la colonne 'standardization'.
-    Retourne le nombre de KO uniques.
+    Aggregate by KEGG code by summing the ‘standardization’ column.
+    Returns the number of unique KOs.
     """
     df = pd.read_csv(PATH_IN, sep="\t", usecols=["kegg", "standardization"])
 
     missing = {"kegg", "standardization"} - set(df.columns)
     if missing:
-        raise KeyError(f"Colonnes manquantes : {missing}")
+        raise KeyError(f"Column missing : {missing}")
 
     df_ko = df.groupby("kegg", as_index=False)["standardization"].sum()
     df_ko.to_csv(PATH_OUT, sep="\t", index=False)

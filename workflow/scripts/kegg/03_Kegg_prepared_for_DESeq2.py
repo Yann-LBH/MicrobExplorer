@@ -17,13 +17,13 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-METADATA_COLS = {"contig", "Length", "Contig_ID", "gene_length", "id", "product"}
+METADATA_COLS = {"contig", "length", "contig_id", "gene_length", "id", "product"}
 
 
 def sum_per_kegg(PATH_IN: str, PATH_OUT: str) -> int:
     """
-    Agrège les counts par KEGG ID.
-    Retourne le nombre de KO uniques.
+    Aggregates the counts by KEGG ID.
+    Returns the number of unique KOs.
     """
     header = pd.read_csv(PATH_IN, sep="\t", nrows=0).columns
     cols_keep = [c for c in header if c == "kegg" or c not in METADATA_COLS]
@@ -31,7 +31,7 @@ def sum_per_kegg(PATH_IN: str, PATH_OUT: str) -> int:
     df = pd.read_csv(PATH_IN, sep="\t", usecols=cols_keep)
 
     if "kegg" not in df.columns:
-        raise KeyError(f"Colonne 'kegg' manquante dans {PATH_IN}")
+        raise KeyError(f"Column 'kegg' missing in {PATH_IN}")
 
     df_out = df.groupby("kegg").sum(numeric_only=True).reset_index()
     df_out.to_csv(PATH_OUT, sep="\t", index=False)

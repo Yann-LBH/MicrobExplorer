@@ -20,21 +20,21 @@ logging.basicConfig(
 
 def intersection_kegg(PATH_IN: str, COUNTS: str, PATH_OUT: str) -> int:
     """
-    Jointure inner entre les annotations KEGG et les counts d'un échantillon.
-    Retourne le nombre de lignes dans l'intersection.
+    Inner join between KEGG annotations and the counts for a sample.
+    Returns the number of rows in the intersection.
     """
     df_kegg = pd.read_csv(PATH_IN, sep="\t")
     df_kegg["contig"] = df_kegg["contig"].astype(str).str.strip()
 
     df_counts = pd.read_csv(COUNTS, sep="\t")
-    df_counts["Contig_ID"] = df_counts["Contig_ID"].astype(str).str.strip()
-    df_counts.drop(columns=["Reads_Unmapped"], errors="ignore", inplace=True)
+    df_counts["contig_id"] = df_counts["contig_id"].astype(str).str.strip()
+    df_counts.drop(columns=["reads_unmapped"], errors="ignore", inplace=True)
 
     if "Contig_ID" not in df_counts.columns:
-        raise KeyError(f"Colonne 'Contig_ID' manquante dans {COUNTS}")
+        raise KeyError(f"Column 'contig_id' missing in {COUNTS}")
 
     df_out = df_counts.merge(
-        df_kegg, left_on="Contig_ID", right_on="contig", how="inner"
+        df_kegg, left_on="contig_id", right_on="contig", how="inner"
     )
 
     if df_out.empty:
