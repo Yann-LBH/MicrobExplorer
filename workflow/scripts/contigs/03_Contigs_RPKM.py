@@ -34,11 +34,11 @@ def calculate_rpkm(PATH_IN: str, PATH_OUT: str) -> int:
 
     if total_mapped == 0:
         print(f"⚠️  Total mapped reads = 0 for {PATH_IN}, RPKM set to NaN.")
-        df["RPKM"] = float("nan")
+        df["rpkm"] = float("nan")
         df.to_csv(PATH_OUT, sep="\t", index=False)
         return 0
 
-    df["RPKM"] = ((df["read_mapped"] * 1e9) / (df["length"] * total_mapped)).round(4)
+    df["rpkm"] = ((df["read_mapped"] * 1e9) / (df["length"] * total_mapped)).round(4)
     df.to_csv(PATH_OUT, sep="\t", index=False)
     return len(df)
 

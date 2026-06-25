@@ -145,7 +145,7 @@ plots:
     title: "Top 10 taxons differentially abundant"
     subtitle: "DESeq2 results"
     top_n: 10
-    target_rank:: "genus"
+    target_rank: "genus"
     taxon_rank: "genus" #eg : "phylum", class", "order", "family", "genus", "species"
     pathway_level: "level_3" #eg : "level_1", "level_2", "level_3", "gene_description"
 

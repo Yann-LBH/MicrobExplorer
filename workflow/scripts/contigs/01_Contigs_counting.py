@@ -21,7 +21,7 @@ logging.basicConfig(
 # --- Filtering ---
 def filter_contigs(PATH_IN: str, PATH_OUT: str, THRESHOLD: int) -> int:
     """
-    Reads the input, filters based on `Length` >= `threshold`,
+    Reads the input, filters based on `length` >= `threshold`,
     and writes the output to a TSV file.
     Returns the number of retained contigs.
     """
@@ -33,7 +33,7 @@ def filter_contigs(PATH_IN: str, PATH_OUT: str, THRESHOLD: int) -> int:
         dtype={"length": int}
     )
 
-    df_filtered = df[df["Length"] >= THRESHOLD]
+    df_filtered = df[df["length"] >= THRESHOLD]
 
     df_filtered.to_csv(PATH_OUT, sep="\t", index=False, header=True)
     return len(df_filtered)
