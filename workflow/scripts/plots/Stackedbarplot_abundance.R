@@ -15,14 +15,12 @@
 # Snakemake configuration
 # ==========================================================================
 
+# All script comments are provided in English as requested.
 library(data.table)
+library(readxl)
 library(ggplot2)
 library(arrow)
-library(readxl)
 
-# ==========================================================================
-# Configuration (Snakemake)
-# ==========================================================================
 # Inputs
 DATA     <- as.character(snakemake@input[["data"]])
 METADATA <- as.character(snakemake@input[["metadata"]])
@@ -35,9 +33,12 @@ PARQUET <- as.character(c(snakemake@output[["parquet"]])[1])
 MODE          <- as.character(c(snakemake@params[["mode"]])[1])
 TOP_N         <- as.integer(c(snakemake@params[["top_n"]])[1])
 VALUE_COL     <- as.character(c(snakemake@params[["value_col"]])[1])
-TARGET_RANK   <- as.character(c(snakemake@params[["target_rank"]])[1]) # taxonomy mode
+TARGET_RANK   <- tolower(as.character(c(snakemake@params[["target_rank"]])[1])) %||% "genus"
 TAXON_RANK    <- tolower(as.character(c(snakemake@params[["taxon_rank"]])[1])) %||% "genus"
 PATHWAY_LEVEL <- as.character(c(snakemake@params[["pathway_level"]])[1])
+
+# ✅ FIXED: Define TAX_RANKS globally so it is accessible in all modes
+TAX_RANKS     <- c("domain", "kingdom", "phylum", "class", "order", "family", "genus", "species")
 
 # ==========================================================================
 # Helpers
@@ -113,9 +114,9 @@ load_metadata <- function(path) {
 }
 
 # ==========================================================================
-# MODE: pathway
+# MODE: Kegg
 # ==========================================================================
-run_pathway <- function() {
+run_kegg <- function() {
   meta <- load_metadata(METADATA)
   all_data <- load_tsv_dir_dynamic(DATA, meta, select_cols = c(PATHWAY_LEVEL, VALUE_COL))
 
@@ -125,7 +126,6 @@ run_pathway <- function() {
 
   write_parquet(all_data, PARQUET)
 
-  # Aggregate per condition × date × pathway
   agg <- all_data[, .(total = sum(get(VALUE_COL), na.rm = TRUE)),
     by = .(name, date, get(PATHWAY_LEVEL))
   ]
@@ -156,13 +156,12 @@ run_pathway <- function() {
 }
 
 # ==========================================================================
-# MODE: taxonomy
+# MODE: Contigs
 # ==========================================================================
-run_taxonomy <- function() {
+run_contigs <- function() {
   meta   <- load_metadata(METADATA)
   dt_all <- load_tsv_dir_dynamic(DATA, meta)
 
-  # Vectorised taxonomy split
   tax_split <- dt_all[, tstrsplit(Taxonomy, ";\\s*",
     fixed = FALSE,
     names = TAX_RANKS, fill = "Unclassified"
@@ -180,16 +179,13 @@ run_taxonomy <- function() {
   
   write_parquet(dt_taxo, PARQUET)
 
-  # Utilisation dynamique du rang cible configuré (ex: "Phylum", "Genus")
   setnames(dt_taxo, TARGET_RANK, "Taxon")
 
-  # Agrégation par Digesteur (name), Date et Taxon
   agg <- dt_taxo[, .(RPKM_Sum = sum(get(VALUE_COL), na.rm = TRUE)),
     by = .(name, date, Taxon)
   ]
   agg[, Abund_Pct := (RPKM_Sum / sum(RPKM_Sum)) * 100, by = .(name, date)]
 
-  # Top N global pour cet ensemble de données
   top_taxa <- agg[, .(G = sum(RPKM_Sum)), by = Taxon][
     order(-G)[seq_len(min(TOP_N, .N))], Taxon
   ]
@@ -200,7 +196,6 @@ run_taxonomy <- function() {
     by = .(name, date, Taxon_Final)
   ]
 
-  # 3. Génération des graphiques (Une page par Digesteur)
   pdf(PDF, width = 12, height = 8)
   
   lapply(unique(final_dt$name), function(r) {
@@ -234,18 +229,16 @@ run_taxonomy <- function() {
 }
 
 # ==========================================================================
-# MODE: organisms
+# MODE: Reads
 # ==========================================================================
-run_organisms <- function() {
+run_reads <- function() {
   meta <- load_metadata(METADATA)
   dt   <- load_tsv_dir_dynamic(DATA, meta)
 
-  # Security: check if the configured pre-split column exists
   if (!TAXON_RANK %in% names(dt)) {
     stop(sprintf("The taxonomy column [%s] is missing from the input file.", TAXON_RANK))
   }
 
-  # Clean unassigned fields on the targeted column directly
   dt[get(TAXON_RANK) == "" | get(TAXON_RANK) == " " | is.na(get(TAXON_RANK)), (TAXON_RANK) := "Unclassified"]
 
   setkey(dt, sample_id)
@@ -254,11 +247,12 @@ run_organisms <- function() {
 
   write_parquet(dt, PARQUET)
 
-  # Global dynamic aggregation using the targeted pre-split column
+  # ✅ FIXED: Standardized dynamic column extraction with data.table evaluating via character vector
   taxa_config_global <- dt[, .(Global_RPKM = sum(get(VALUE_COL), na.rm = TRUE)), by = c(TAXON_RANK)]
   setorder(taxa_config_global, -Global_RPKM)
   
-  top_genera <- taxa_config_global[seq_len(min(TOP_N, .N)), get(TAXON_RANK)]
+  # Use standard vector indexing to prevent length/evaluation issues
+  top_genera <- taxa_config_global[seq_len(min(TOP_N, .N)), [[TAXON_RANK]]]
 
   # --- Plot 1: global horizontal bar ---
   plot1_dt <- taxa_config_global[, .(
@@ -286,6 +280,7 @@ run_organisms <- function() {
     )
 
   # --- Plot 2: stacked per sample name × date ---
+  # ✅ FIXED: Force evaluation context using character vector syntax
   plot2_dt <- dt[!is.na(name) & !is.na(date),
     .(Total_RPKM = sum(get(VALUE_COL), na.rm = TRUE)),
     by = c("name", "date", TAXON_RANK)
@@ -328,10 +323,10 @@ run_organisms <- function() {
 # Dispatch
 # ==========================================================================
 switch(MODE,
-  pathway   = run_pathway(),
-  taxonomy  = run_taxonomy(),
-  organisms = run_organisms(),
-  stop("Unknown mode: ", MODE, ". Use 'pathway', 'taxonomy', or 'organisms'.")
+  pathway   = run_kegg(),
+  taxonomy  = run_contigs(),
+  organisms = run_reads(),
+  stop("Unknown mode: ", MODE, ". Use 'kegg', 'contigs', or 'reads'.")
 )
 
 message("✓ Execution completed. Output written to ", PDF, " and ", PARQUET)

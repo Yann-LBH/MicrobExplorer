@@ -17,9 +17,9 @@ logging.basicConfig(
 )
 
 FINAL_COLS = [
-    "Read_ID",
-    "Count",
-    "CPM",
+    "read_id",
+    "count",
+    "cpm",
     "scientific_name",
     "domain",
     "kingdom",
@@ -38,7 +38,7 @@ FINAL_COLS = [
 def load_mapping(TAXONOMY: str) -> pd.DataFrame:
     # Directly reading taxonomy assuming the column is already "Read_ID"
     return pd.read_csv(
-        TAXONOMY, sep="\t", header=0, quoting=3, dtype={"Read_ID": str}
+        TAXONOMY, sep="\t", header=0, quoting=3, dtype={"read_id": str}
     )
 
 
@@ -51,7 +51,7 @@ def read_counts(PATH_IN: str) -> pd.DataFrame:
         PATH_IN,
         sep="\t",
         header=0,
-        dtype={"Read_ID": str, "Count": int, "CPM": float},
+        dtype={"read_id": str, "count": int, "cpm": float},
     )
 
 
@@ -62,7 +62,10 @@ def enrich(
     PATH_IN: pd.DataFrame, TAXONOMY: pd.DataFrame, NOISE: list[str], TOP_N: int
 ) -> pd.DataFrame:
 
-    df = PATH_IN.merge(TAXONOMY, left_on="Read_ID", right_on="tax_id", how="left")
+    PATH_IN["read_id"] = PATH_IN["read_id"].astype(str).str.strip()
+    TAXONOMY["tax_id"] = TAXONOMY["tax_id"].astype(str).str.strip()
+
+    df = PATH_IN.merge(TAXONOMY, left_on="read_id", right_on="tax_id", how="left")
     df = df[~df["domain"].isin(NOISE)]
     df = df[df["scientific_name"].notna()]
 
@@ -71,10 +74,10 @@ def enrich(
 
     # Summing up both Count and CPM for the remaining entries
     df_others = (
-        df_rest.groupby("domain", as_index=False)[["Count", "CPM"]].sum()
+        df_rest.groupby("domain", as_index=False)[["count", "cpm"]].sum()
     )
-    df_others["scientific_name"] = "Others - " + df_others["domain"]
-    df_others["Read_ID"] = pd.NA
+    df_others["scientific_name"] = "others - " + df_others["domain"]
+    df_others["read_id"] = pd.NA
 
     for col in FINAL_COLS:
         if col not in df_others.columns:
@@ -97,10 +100,10 @@ if __name__ == "__main__":
     # Report
     sample_name = snakemake.wildcards.sample
 
-    if "Read_ID" in PATH_IN.columns:
-        PATH_IN["Read_ID"] = PATH_IN["Read_ID"].astype(str).str.strip()
-    if "Read_ID" in TAXONOMY.columns:
-        TAXONOMY["Read_ID"] = TAXONOMY["Read_ID"].astype(str).str.strip()
+    if "read_id" in PATH_IN.columns:
+        PATH_IN["read_id"] = PATH_IN["read_id"].astype(str).str.strip()
+    if "read_id" in TAXONOMY.columns:
+        TAXONOMY["read_id"] = TAXONOMY["read_id"].astype(str).str.strip()
 
     process = enrich(PATH_IN, TAXONOMY, NOISE, TOP_N)
     process.to_csv(PATH_OUT, sep="\t", index=False)

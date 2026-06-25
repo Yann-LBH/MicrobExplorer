@@ -18,14 +18,14 @@ if __name__ == "__main__":
 
     # Sum abundances across all files
     for f in INPUT_PATH:
-        chunk = pd.read_csv(f, sep="\t", usecols=["Contig_ID", "Reads_Mapped"])
+        chunk = pd.read_csv(f, sep="\t", usecols=["contig_id", "read_mapped"])
 
-        file_counts = chunk.groupby("Contig_ID")["Reads_Mapped"].sum()
+        file_counts = chunk.groupby("contig_id")["read_mapped"].sum()
         global_counts = global_counts.add(file_counts, fill_value=0)
 
     # Save the reference global table
     global_counts.to_csv(
-        OUTPUT_PATH, sep="\t", header=["Total_Abundance"], index_label="Contig_ID"
+        OUTPUT_PATH, sep="\t", header=["total_abundance"], index_label="contig_id"
     )
 
     print(f"✓ CONTIGS : Global abundance step passed successfully -> {OUTPUT_PATH}")

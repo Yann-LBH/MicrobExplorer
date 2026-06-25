@@ -39,7 +39,7 @@ def calculate_cpm(PATH_IN, PATH_OUT):
         if total_reads > 0:
             with open(PATH_OUT, "w", encoding="utf-8") as f_out:
                 # Write new header containing the cpm column
-                f_out.write("Read_ID\tCount\tCPM\n")
+                f_out.write("read_id\tcount\tcpm\n")
                 
                 for taxon_id, reads in data_lines:
                     # CPM Formula: (reads / total_reads) * 1,000,000

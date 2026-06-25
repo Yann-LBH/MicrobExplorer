@@ -18,7 +18,7 @@ logging.basicConfig(
 )
 
 def get_union_and_extract(
-    ABUNDANCE: str, RPKM_FILTERED: str, RAW_DATA: str, PATH_OUT: str
+    ABUNDANCE: str, RPKM_FILTERED: str, DATA_SOURCE: str, PATH_OUT: str
 ) -> int:
     """
     Union des Contig_ID des deux fichiers filtrés,
@@ -26,20 +26,14 @@ def get_union_and_extract(
     Retourne le nombre de contigs extraits.
     """
     
-    ids_abund = pd.read_csv(ABUNDANCE, sep="\t", usecols=["Contig_ID"])["Contig_ID"]
-    ids_rpkm = pd.read_csv(RPKM_FILTERED, sep="\t", usecols=["Contig_ID"])["Contig_ID"]
+    ids_abund = pd.read_csv(ABUNDANCE, sep="\t", usecols=["contig_id"])["contig_id"]
+    ids_rpkm = pd.read_csv(RPKM_FILTERED, sep="\t", usecols=["contig_id"])["contig_id"]
 
     target_ids = set(ids_abund).union(ids_rpkm)
 
-    df_source = pd.read_csv(
-        RAW_DATA,
-        sep=r"\s+",
-        header=None,
-        names=["Contig_ID", "Length", "Reads_Mapped", "Reads_Unmapped"],
-        engine="python",
-    )
+    df_source = pd.read_csv(DATA_SOURCE, sep="\t")
 
-    df_out = df_source[df_source["Contig_ID"].isin(target_ids)]
+    df_out = df_source[df_source["contig_id"].isin(target_ids)]
     df_out.to_csv(PATH_OUT, sep="\t", index=False)
 
     return len(df_out)
@@ -50,12 +44,12 @@ if __name__ == "__main__":
 
     ABUNDANCE = snakemake.input.abundance
     RPKM_FILTERED = snakemake.input.rpkm_filtered
-    RAW_DATA = snakemake.input.raw_data
+    DATA_SOURCE = snakemake.input.data_source
     PATH_OUT = snakemake.output.union
 
     # Report
     sample_name = snakemake.wildcards.sample
-    process = get_union_and_extract(ABUNDANCE, RPKM_FILTERED, RAW_DATA, PATH_OUT)
+    process = get_union_and_extract(ABUNDANCE, RPKM_FILTERED, DATA_SOURCE, PATH_OUT)
     if process:
         logging.info(
             f"[CONTIGS_UNION_FILTER] SUCCESS | Sample: {sample_name} | "
@@ -64,7 +58,7 @@ if __name__ == "__main__":
         )
     else:
         logging.error(
-            f"[CONTIGS_UNION_FILTER] FAILED  | Sample: {sample_name} | Input: {PATH_IN}"
+            f"[CONTIGS_UNION_FILTER] FAILED  | Sample: {sample_name}"
         )
 
         raise RuntimeError(f"Filtering failed for {sample_name}")

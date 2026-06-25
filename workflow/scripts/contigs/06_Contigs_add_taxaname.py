@@ -18,32 +18,85 @@ logging.basicConfig(
 )
 
 
-def load_taxonomy(TAXONOMY: str) -> pd.Series:
+# All script comments are provided in English as requested.
+import logging
+import os
+import pandas as pd
+
+# Global definition of standardized lowercase taxonomic ranks
+TAX_RANKS = [
+    "domain",
+    "kingdom",
+    "phylum",
+    "class",
+    "order",
+    "family",
+    "genus",
+    "species",
+]
+
+
+def load_taxonomy(TAXONOMY: str) -> pd.DataFrame:
+    """Loads the taxonomy file and expands the semi-colon separated Lineage
+
+    into 8 standardized lowercase columns.
+    Expected input format: [0] Class | [1] ID | [2] TaxID | [3] Lineage
     """
-    Loads the taxonomy file.
-    Expected format: [0] Class | [1] ID | [2] TaxID | [3] Lineage
-    Returns a pandas Series indexed by Contig_ID.
-    """
+    # Load columns 1 (ID) and 3 (Lineage)
     df = pd.read_csv(
-        TAXONOMY, sep="\t", header=None, usecols=[1, 3], names=["Contig_ID", "Lineage"]
+        TAXONOMY,
+        sep="\t",
+        header=None,
+        usecols=[1, 3],
+        names=["contig_id", "lineage"],
     )
-    df["Lineage"] = df["Lineage"].str.rstrip(";")
-    return df.set_index("Contig_ID")["Lineage"]
+
+    # Clean trailing semi-colons and split into separate columns
+    df["lineage"] = df["lineage"].str.rstrip(";")
+    expanded_tax = (
+        df["lineage"].str.split(r";\s*", expand=True).fillna("unclassified")
+    )
+
+    # Slice or pad columns to match exactly the 8 standard ranks
+    num_cols = expanded_tax.shape[1]
+    if num_cols < 8:
+        for i in range(num_cols, 8):
+            expanded_tax[i] = "unclassified"
+    elif num_cols > 8:
+        expanded_tax = expanded_tax.iloc[:, :8]
+
+    # Assign lowercase taxonomic names as column headers
+    expanded_tax.columns = TAX_RANKS
+    expanded_tax["contig_id"] = df["contig_id"]
+
+    return expanded_tax.set_index("contig_id")
 
 
-def run_annotation(PATH_IN: str, PATH_OUT: str, taxonomy: pd.Series) -> int:
-    """
-    Annotates RPKM data with taxonomy, sorts by RPKM descending, and writes the output.
-    Returns the number of annotated contigs.
+def run_annotation(PATH_IN: str, PATH_OUT: str, df_tax: pd.DataFrame) -> int:
+    """Merges the lowercase expanded taxonomy columns into the incoming RPKM
+
+    dataset.
     """
     df = pd.read_csv(PATH_IN, sep="\t")
 
-    df["Taxonomy"] = df["Contig_ID"].map(taxonomy).fillna("Unclassified")
+    # Ensure columns from step 5 are also strictly lowercase
+    df.columns = df.columns.str.lower()
 
-    #df = df.sort_values("RPKM", ascending=False)
-    df.to_csv(PATH_OUT, sep="\t", index=False)
+    # Join the expanded taxonomy data based on contig_id
+    df_annotated = df.merge(df_tax, on="contig_id", how="left")
 
-    return len(df)
+    # Fill any missing unmatched contigs with 'unclassified' for all ranks
+    df_annotated[TAX_RANKS] = df_annotated[TAX_RANKS].fillna("unclassified")
+
+    # Replace empty strings or whitespace-only strings with 'unclassified'
+    for col in TAX_RANKS:
+        df_annotated[col] = df_annotated[col].replace(
+            r"^\s*$", "unclassified", regex=True
+        )
+
+    df_annotated.to_csv(PATH_OUT, sep="\t", index=False)
+
+    return len(df_annotated)
 
 
 # --- Exécution ---

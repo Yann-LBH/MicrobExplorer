@@ -29,8 +29,8 @@ def filter_contigs(PATH_IN: str, PATH_OUT: str, THRESHOLD: int) -> int:
         PATH_IN, 
         sep="\t", 
         header=None, 
-        names=["Contig_ID", "Length", "Reads_Mapped", "Reads_Unmapped"],
-        dtype={"Length": int}
+        names=["contig_id", "length", "read_mapped", "read_unmapped"],
+        dtype={"length": int}
     )
 
     df_filtered = df[df["Length"] >= THRESHOLD]

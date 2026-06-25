@@ -473,7 +473,7 @@ rule contigs_rpkm_filter:
 
 rule contigs_union:
     input:
-        raw_data=lambda w: CONTIGS_FILES[w.sample],
+        data_source=CONTIGS_TREATMENT + "3.RPKM/rpkm_{sample}_contigs.tsv",
         abundance=CONTIGS_TREATMENT + "2.Filtered/filtered_{sample}_contigs.tsv",
         rpkm_filtered=CONTIGS_TREATMENT
         + "4.RPKM_Filtered/rpkm_filtered_{sample}_contigs.tsv"
@@ -633,7 +633,8 @@ rule plot_stackedbarplot:
     params:
         mode=lambda w: FILENAME_TO_MODE.get(w.filename, w.filename),
         top_n=config["plots"]["stackedbarplot"]["top_n"],
-        target_rank=config["plots"]["stackedbarplot"]["taxon_rank"],
+        target_rank=config["plots"]["stackedbarplot"]["target_rank"],
+        taxon_rank=config["plots"]["stackedbarplot"]["taxon_rank"],
         value_col=lambda w: PLOT_PARAMS[w.source]["value_col"],
         pathway_level=config["plots"]["stackedbarplot"]["pathway_level"],
     script:

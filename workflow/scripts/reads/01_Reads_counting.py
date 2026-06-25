@@ -35,7 +35,7 @@ def kaiju_analyze(PATH_IN, PATH_OUT):
     if counter:
         with open(PATH_OUT, "w", encoding="utf-8") as f_out:
             # Write header
-            f_out.write("Read_ID\tCount\n")
+            f_out.write("read_id\tcount\n")
             
             # Sort by counts (highest to lowest)
             for taxon, total in sorted(

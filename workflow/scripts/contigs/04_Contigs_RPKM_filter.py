@@ -23,8 +23,8 @@ def get_min_rpkm_across_samples(files: list[str]) -> pd.Series:
     Un contig absent d'un échantillon vaut 0.0 pour cet échantillon.
     """
     frames = [
-        pd.read_csv(f, sep="\t", usecols=["Contig_ID", "RPKM"]).set_index("Contig_ID")[
-            "RPKM"
+        pd.read_csv(f, sep="\t", usecols=["contig_id", "rpkm"]).set_index("contig_id")[
+            "rpkm"
         ]
         for f in files
     ]
@@ -40,7 +40,7 @@ def filter_by_min_rpkm(
     Retourne le nombre de lignes conservées.
     """
     df = pd.read_csv(current, sep="\t")
-    mask = df["Contig_ID"].map(global_min).fillna(0.0) >= RPKM_THRESHOLD
+    mask = df["contig_id"].map(global_min).fillna(0.0) >= RPKM_THRESHOLD
     df[mask].to_csv(PATH_OUT, sep="\t", index=False)
     return mask.sum()
 

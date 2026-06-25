@@ -25,20 +25,20 @@ def calculate_rpkm(PATH_IN: str, PATH_OUT: str) -> int:
     """
     df = pd.read_csv(PATH_IN, sep="\t")
 
-    required_cols = {"Length", "Reads_Mapped"}
+    required_cols = {"length", "read_mapped"}
     missing = required_cols - set(df.columns)
     if missing:
-        raise KeyError(f"Colonnes manquantes dans {PATH_IN} : {missing}")
+        raise KeyError(f"Missing column in {PATH_IN} : {missing}")
 
-    total_mapped = df["Reads_Mapped"].sum()
+    total_mapped = df["reads_mapped"].sum()
 
     if total_mapped == 0:
-        print(f"⚠️  Total mapped reads = 0 pour {PATH_IN}, RPKM mis à NaN.")
+        print(f"⚠️  Total mapped reads = 0 for {PATH_IN}, RPKM set to NaN.")
         df["RPKM"] = float("nan")
         df.to_csv(PATH_OUT, sep="\t", index=False)
         return 0
 
-    df["RPKM"] = ((df["Reads_Mapped"] * 1e9) / (df["Length"] * total_mapped)).round(4)
+    df["RPKM"] = ((df["read_mapped"] * 1e9) / (df["length"] * total_mapped)).round(4)
     df.to_csv(PATH_OUT, sep="\t", index=False)
     return len(df)
 
