@@ -19,7 +19,7 @@ METADATA <- as.character(snakemake@input[["metadata"]])
 RDS      <- as.character(snakemake@output[["rds"]])
 
 # Paramètres (avec valeurs par défaut au cas où)
-VALUE_COL <- as.character(snakemake@params[["value_col"]])[1]
+VALUE_COL <- tolower(as.character(snakemake@params[["value_col"]]))[1]
 
 # ==========================================================================
 # 1. Chargement des métadonnées et des fichiers TSV
@@ -46,23 +46,32 @@ all_data <- rbindlist(Filter(Negate(is.null), df_list), use.names = TRUE, fill =
 # ==========================================================================
 # 2. Détection Automatique du Type de Données (KEGG vs Taxonomie)
 # ==========================================================================
-if ("ko" %in% names(all_data)) {
+
+ if ("cpm" %in% names(all_data)) {
+  # --- Configuration MODE TAXONOMIE (Reads) ---
+  # ✅ FIXED: Use read_id as row identifier for the reads dataset
+  id_col   <- "read_id" 
+  tax_cols <- c("domain", "kingdom", "phylum", "class", "order", "family", "genus", "species")
+  tax_cols <- intersect(tax_cols, names(all_data))
+  message("🦠 Mode detected : Taxonomic (Reads)")
+}  else if ("rpkm" %in% names(all_data)) {
+  # --- Configuration MODE TAXONOMIE (Contigs) ---
+  # ✅ FIXED: Use contig_id as row identifier, matching the lowercase python step 6
+  id_col   <- "contig_id"
+  tax_cols <- c("domain", "kingdom", "phylum", "class", "order", "family", "genus", "species")
+  tax_cols <- intersect(tax_cols, names(all_data))
+  message("🦠 Mode detected : Taxonomic (Contigs)")
+} else {
   # --- Configuration MODE KEGG ---
   id_col   <- "ko"
   tax_cols <- intersect(c("ec_number", "level_1", "level_2", "level_3", "gene_description"), names(all_data))
-  message("🧬 Mode détecté : Fonctionnel (KEGG)")
-} else {
-  # --- Configuration MODE TAXONOMIE (Reads ou Contigs) ---
-  # On cherche un identifiant unique pour les lignes (le nom scientifique ou l'ID de taxon)
-  id_col   <- intersect(c("scientific_name", "tax_id", "Taxon"), names(all_data))[1]
-  tax_cols <- c("domain", "kingdom", "phylum", "class", "order", "family", "genus", "species")
-  tax_cols <- intersect(tax_cols, names(all_data))
-  message("🦠 Mode détecté : Taxonomique (Reads/Contigs)")
+  message("🧬 Mode detected : Functional (KEGG)")
+
 }
 
 # Sécurité critique : On vérifie que la colonne d'abondance demandée existe
 if (!VALUE_COL %in% names(all_data)) {
-  stop(sprintf("Erreur : La colonne d'abondance [%s] n'existe pas dans ces fichiers.", VALUE_COL))
+  stop(sprintf("Error : The abundance column [%s] does not exist in these files.", VALUE_COL))
 }
 
 # ==========================================================================

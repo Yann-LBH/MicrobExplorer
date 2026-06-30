@@ -30,7 +30,7 @@ def calculate_rpkm(PATH_IN: str, PATH_OUT: str) -> int:
     if missing:
         raise KeyError(f"Missing column in {PATH_IN} : {missing}")
 
-    total_mapped = df["reads_mapped"].sum()
+    total_mapped = df["read_mapped"].sum()
 
     if total_mapped == 0:
         print(f"⚠️  Total mapped reads = 0 for {PATH_IN}, RPKM set to NaN.")

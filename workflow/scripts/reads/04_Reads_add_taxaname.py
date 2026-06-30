@@ -58,21 +58,31 @@ def read_counts(PATH_IN: str) -> pd.DataFrame:
 # ==========================================================================
 # 3. Enrichment + Top N + Others
 # ==========================================================================
+# All script comments are provided in English as requested.
+
 def enrich(
     PATH_IN: pd.DataFrame, TAXONOMY: pd.DataFrame, NOISE: list[str], TOP_N: int
 ) -> pd.DataFrame:
 
+    # 1. Clean and harmonize keys strictly before merging
     PATH_IN["read_id"] = PATH_IN["read_id"].astype(str).str.strip()
     TAXONOMY["tax_id"] = TAXONOMY["tax_id"].astype(str).str.strip()
 
+    # ✅ STEP-BY-STEP FIX: Drop empty or null rows in keys to prevent cross-join explosions
+    PATH_IN = PATH_IN[PATH_IN["read_id"].notna() & (PATH_IN["read_id"] != "")]
+    TAXONOMY = TAXONOMY[TAXONOMY["tax_id"].notna() & (TAXONOMY["tax_id"] != "")]
+
+    # 2. Perform mapping (Strict 1-to-1 dynamic)
     df = PATH_IN.merge(TAXONOMY, left_on="read_id", right_on="tax_id", how="left")
+
+    # 3. Apply biological noise filters
     df = df[~df["domain"].isin(NOISE)]
     df = df[df["scientific_name"].notna()]
 
+    # 4. Extract Top N and group remaining reads
     df_top = df.head(TOP_N).copy()
     df_rest = df.iloc[TOP_N:].copy()
 
-    # Summing up both Count and CPM for the remaining entries
     df_others = (
         df_rest.groupby("domain", as_index=False)[["count", "cpm"]].sum()
     )

@@ -19,6 +19,7 @@
 library(data.table)
 library(readxl)
 library(ggplot2)
+library(rlang)
 library(arrow)
 
 # Inputs
@@ -32,7 +33,7 @@ PARQUET <- as.character(c(snakemake@output[["parquet"]])[1])
 # Parameters
 MODE          <- as.character(c(snakemake@params[["mode"]])[1])
 TOP_N         <- as.integer(c(snakemake@params[["top_n"]])[1])
-VALUE_COL     <- as.character(c(snakemake@params[["value_col"]])[1])
+VALUE_COL     <- tolower(as.character(c(snakemake@params[["value_col"]])[1]))
 TARGET_RANK   <- tolower(as.character(c(snakemake@params[["target_rank"]])[1])) %||% "genus"
 TAXON_RANK    <- tolower(as.character(c(snakemake@params[["taxon_rank"]])[1])) %||% "genus"
 PATHWAY_LEVEL <- as.character(c(snakemake@params[["pathway_level"]])[1])
@@ -161,21 +162,10 @@ run_kegg <- function() {
 run_contigs <- function() {
   meta   <- load_metadata(METADATA)
   dt_all <- load_tsv_dir_dynamic(DATA, meta)
-
-  tax_split <- dt_all[, tstrsplit(Taxonomy, ";\\s*",
-    fixed = FALSE,
-    names = TAX_RANKS, fill = "Unclassified"
-  )]
   
-  for (col in TAX_RANKS) {
-    tax_split[get(col) == "" | get(col) == " " | is.na(get(col)), (col) := "Unclassified"]
-  }
-
-  dt_taxo <- cbind(dt_all, tax_split)
-  
-  setkey(dt_taxo, sample_id)
+  setkey(dt_all, sample_id)
   setkey(meta, sample_id)
-  dt_taxo <- meta[dt_taxo, nomatch = 0L]
+  dt_taxo <- meta[dt_all, nomatch = 0L]
   
   write_parquet(dt_taxo, PARQUET)
 
@@ -247,12 +237,12 @@ run_reads <- function() {
 
   write_parquet(dt, PARQUET)
 
-  # ✅ FIXED: Standardized dynamic column extraction with data.table evaluating via character vector
+  # Standardized dynamic column extraction with data.table evaluating via character vector
   taxa_config_global <- dt[, .(Global_RPKM = sum(get(VALUE_COL), na.rm = TRUE)), by = c(TAXON_RANK)]
   setorder(taxa_config_global, -Global_RPKM)
   
   # Use standard vector indexing to prevent length/evaluation issues
-  top_genera <- taxa_config_global[seq_len(min(TOP_N, .N)), [[TAXON_RANK]]]
+  top_genera <- taxa_config_global[seq_len(min(TOP_N, .N))][[TAXON_RANK]]
 
   # --- Plot 1: global horizontal bar ---
   plot1_dt <- taxa_config_global[, .(

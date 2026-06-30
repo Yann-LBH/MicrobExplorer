@@ -81,8 +81,8 @@ datatypes:
 
 # Abundance columns
 phyloseq:
-    reads: "CPM"
-    contigs: "RPKM"
+    reads: "cpm"
+    contigs: "rpkm"
     kegg: "standardization"
 
 # DESeq2 contrasts to generate
