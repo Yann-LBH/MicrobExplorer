@@ -17,12 +17,12 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-REQUIRED_COLS = {"reads_mapped", "gene_length", "length"}
+REQUIRED_COLS = {"read_mapped", "gene_length", "length"}
 
 
 def calculate_score_kegg(PATH_IN: str, PATH_OUT: str) -> int:
     """
-    Calculates the weighted abundance: (reads_mapped * gene_length) / length
+    Calculates the weighted abundance: (read_mapped * gene_length) / length
     Returns the number of processed lines.
     """
     df = pd.read_csv(PATH_IN, sep="\t")
@@ -31,7 +31,7 @@ def calculate_score_kegg(PATH_IN: str, PATH_OUT: str) -> int:
     if missing:
         raise KeyError(f"Column missing in {PATH_IN} : {missing}")
 
-    df["standardization"] = (df["reads_mapped"] * df["gene_length"]) / df["length"]
+    df["standardization"] = (df["read_mapped"] * df["gene_length"]) / df["length"]
     df.to_csv(PATH_OUT, sep="\t", index=False)
 
     return len(df)

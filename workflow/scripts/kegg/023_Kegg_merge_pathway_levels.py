@@ -44,8 +44,8 @@ def annotate_with_hierarchy(PATH_IN: str, ref: pd.DataFrame, PATH_OUT: str) -> i
     """
     df = pd.read_csv(PATH_IN, sep="\t")
 
-    if "kegg" in df.columns:
-        df.rename(columns={"kegg": "ko"}, inplace=True)
+    if "kegg_id" in df.columns:
+        df.rename(columns={"kegg_id": "ko"}, inplace=True)
     df["ko"] = df["ko"].astype(str).str.replace("ko:", "", regex=False)
 
     merged = df.merge(ref, on="ko", how="left")
@@ -64,7 +64,7 @@ def annotate_with_hierarchy(PATH_IN: str, ref: pd.DataFrame, PATH_OUT: str) -> i
 if __name__ == "__main__":
 
     PATH_IN = snakemake.input.data
-    PATH_OUT = snakemake.output.taxname
+    PATH_OUT = snakemake.output.taxaname
     PATHWAY = snakemake.input.pathway
 
     ref = load_reference(PATHWAY)

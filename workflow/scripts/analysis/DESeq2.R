@@ -11,10 +11,13 @@ library(readxl)
 library(DESeq2)
 library(arrow)
 
+# Inputs
 DATA     <- as.character(snakemake@input[["data"]])
-METADATA <- as.character(snakemake@input[["metadata"]])
-RDS      <- as.character(snakemake@output[["rds"]])
-PARQUET  <- as.character(snakemake@output[["parquet"]])
+METADATA <- as.character(snakemake@input[["metadata"]])[1]
+
+# Outputs
+RDS      <- as.character(snakemake@output[["rds"]])[1]
+PARQUET  <- as.character(snakemake@output[["parquet"]])[1]
 
 # Controls and parameters
 CONTRASTS <- tolower(as.character(snakemake@params[["contrasts"]]))[1]
@@ -60,7 +63,7 @@ raw_list <- lapply(DATA, function(f) {
   setnames(dt, tolower(names(dt)))
   
   # Identify the ID column
-  current_id <- base::intersect(c("read_id", "contig_id", "ko", "kegg"), names(dt))[1]
+  current_id <- base::intersect(c("read_id", "contig_id", "kegg_id"), names(dt))[1]
   if (is.na(current_id)) return(NULL)
   
   # Identify the count column and enforce numeric representation
@@ -82,7 +85,7 @@ if (length(raw_list) == 0) {
   stop("🚨 Step error: raw_list is empty. No valid sample data tables were loaded for DESeq2 analysis.")
 }
 
-possible_ids <- base::intersect(c("contig_id", "read_id", "ko", "kegg"), names(raw_list[[1]]$dt))[1]
+possible_ids <- base::intersect(c("contig_id", "read_id", "kegg_id"), names(raw_list[[1]]$dt))[1]
 if (is.na(possible_ids)) {
   possible_ids <- "read_id"
 }

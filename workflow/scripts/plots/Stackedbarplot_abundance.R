@@ -24,19 +24,19 @@ library(arrow)
 
 # Inputs
 DATA     <- as.character(snakemake@input[["data"]])
-METADATA <- as.character(c(snakemake@input[["metadata"]])[1])
+METADATA <- as.character(snakemake@input[["metadata"]])[1]
 
 # Outputs
-PDF     <- as.character(c(snakemake@output[["pdf"]])[1])
-PARQUET <- as.character(c(snakemake@output[["parquet"]])[1])
+PDF     <- as.character(snakemake@output[["pdf"]])[1]
+PARQUET <- as.character(snakemake@output[["parquet"]])[1]
 
 # Parameters
-MODE          <- as.character(c(snakemake@params[["mode"]])[1])
-TOP_N         <- as.integer(c(snakemake@params[["top_n"]])[1])
-VALUE_COL     <- tolower(as.character(c(snakemake@params[["value_col"]])[1]))
-TARGET_RANK   <- tolower(as.character(c(snakemake@params[["target_rank"]])[1])) %||% "genus"
-TAXON_RANK    <- tolower(as.character(c(snakemake@params[["taxon_rank"]])[1])) %||% "genus"
-PATHWAY_LEVEL <- as.character(c(snakemake@params[["pathway_level"]])[1])
+MODE          <- as.character(snakemake@params[["mode"]])[1]
+TOP_N         <- as.integer(snakemake@params[["top_n"]])[1]
+VALUE_COL     <- tolower(as.character(snakemake@params[["value_col"]])[1])
+TARGET_RANK   <- tolower(as.character(snakemake@params[["target_rank"]])[1]) %||% "genus"
+TAXON_RANK    <- tolower(as.character(snakemake@params[["taxon_rank"]])[1]) %||% "genus"
+PATHWAY_LEVEL <- as.character(snakemake@params[["pathway_level"]])[1]
 
 # ✅ FIXED: Define TAX_RANKS globally so it is accessible in all modes
 TAX_RANKS     <- c("domain", "kingdom", "phylum", "class", "order", "family", "genus", "species")

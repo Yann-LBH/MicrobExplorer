@@ -24,20 +24,20 @@ library(vegan)
 
 # Inputs
 DATA <- as.character(snakemake@input[["data"]])
-METADATA <- as.character(c(snakemake@input[["metadata"]])[1])
-PHYSICO <- as.character(c(snakemake@input[["physico"]])[1])
+METADATA <- as.character(snakemake@input[["metadata"]])[1]
+PHYSICO <- as.character(snakemake@input[["physico"]])[1]
 
 # Outputs
-PDF <- as.character(c(snakemake@output[["pdf"]])[1])
-PARQUET <- as.character(c(snakemake@output[["parquet"]])[1])
-XLSX <- as.character(c(snakemake@output[["xlsx"]])[1])
+PDF <- as.character(snakemake@output[["pdf"]])[1]
+PARQUET <- as.character(snakemake@output[["parquet"]])[1]
+XLSX <- as.character(snakemake@output[["xlsx"]])[1]
 
 # Parameters
 SHARED <- snakemake@params[["shared"]]
-TOP_N <- as.integer(c(snakemake@params[["top_n"]])[1])
-POINT_SIZE <- as.numeric(c(snakemake@params[["point_size"]])[1])
-DIM_X <- as.integer(c(snakemake@params[["dim_x"]])[1])
-DIM_Y <- as.integer(c(snakemake@params[["dim_y"]])[1])
+TOP_N <- as.integer(snakemake@params[["top_n"]])[1]
+POINT_SIZE <- as.numeric(snakemake@params[["point_size"]])[1]
+DIM_X <- as.integer(snakemake@params[["dim_x"]])[1]
+DIM_Y <- as.integer(snakemake@params[["dim_y"]])[1]
 PHYSICO_COLS <- as.character(snakemake@params[["physico_cols"]])
 
 # Wildcards

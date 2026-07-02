@@ -23,13 +23,13 @@ def aggregate_by_ko(PATH_IN: str, PATH_OUT: str) -> int:
     Aggregate by KEGG code by summing the ‘standardization’ column.
     Returns the number of unique KOs.
     """
-    df = pd.read_csv(PATH_IN, sep="\t", usecols=["kegg", "standardization"])
+    df = pd.read_csv(PATH_IN, sep="\t", usecols=["kegg_id", "standardization"])
 
-    missing = {"kegg", "standardization"} - set(df.columns)
+    missing = {"kegg_id", "standardization"} - set(df.columns)
     if missing:
         raise KeyError(f"Column missing : {missing}")
 
-    df_ko = df.groupby("kegg", as_index=False)["standardization"].sum()
+    df_ko = df.groupby("kegg_id", as_index=False)["standardization"].sum()
     df_ko.to_csv(PATH_OUT, sep="\t", index=False)
 
     return len(df_ko)

@@ -21,19 +21,19 @@ library(arrow)
 
 # Inputs
 DATA <- as.character(snakemake@input[["data"]])
-PHYLOSEQ_OBJ <- as.character(c(snakemake@input[["phyloseq_obj"]])[1])
-METADATA <- as.character(c(snakemake@input[["metadata"]])[1])
+PHYLOSEQ_OBJ <- as.character(snakemake@input[["phyloseq_obj"]])[1]
+METADATA <- as.character(snakemake@input[["metadata"]])[1]
 
 # Outputs
-PDF <- as.character(c(snakemake@output[["pdf"]])[1])
-PARQUET <- as.character(c(snakemake@output[["parquet"]])[1])
+PDF <- as.character(snakemake@output[["pdf"]])[1]
+PARQUET <- as.character(snakemake@output[["parquet"]])[1]
 
 # Parameters
-TOP_N <- as.integer(c(snakemake@params[["top_n"]])[1])
-TAXON_RANK <- as.character(snakemake@params[["taxon_rank"]][1])
-COLOR_OPT <- as.character(c(snakemake@params[["color_opt"]])[1]) %||% "turbo"
-CLUST_METHOD <- as.character(c(snakemake@params[["clust_method"]])[1]) %||% "complete"
-DISTANCE_METHOD <- as.character(c(snakemake@params[["distance_method"]])[1]) %||% "bray"
+TOP_N <- as.integer(snakemake@params[["top_n"]])[1]
+TAXON_RANK <- as.character(snakemake@params[["taxon_rank"]])[1]
+COLOR_OPT <- as.character(snakemake@params[["color_opt"]])[1] %||% "turbo"
+CLUST_METHOD <- as.character(snakemake@params[["clust_method"]])[1] %||% "complete"
+DISTANCE_METHOD <- as.character(snakemake@params[["distance_method"]])[1] %||% "bray"
 
 
 # ==========================================================================

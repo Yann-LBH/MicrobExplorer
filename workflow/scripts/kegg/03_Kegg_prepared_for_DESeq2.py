@@ -26,14 +26,14 @@ def sum_per_kegg(PATH_IN: str, PATH_OUT: str) -> int:
     Returns the number of unique KOs.
     """
     header = pd.read_csv(PATH_IN, sep="\t", nrows=0).columns
-    cols_keep = [c for c in header if c == "kegg" or c not in METADATA_COLS]
+    cols_keep = [c for c in header if c == "kegg_id" or c not in METADATA_COLS]
 
     df = pd.read_csv(PATH_IN, sep="\t", usecols=cols_keep)
 
-    if "kegg" not in df.columns:
-        raise KeyError(f"Column 'kegg' missing in {PATH_IN}")
+    if "kegg_id" not in df.columns:
+        raise KeyError(f"Column 'kegg_id' missing in {PATH_IN}")
 
-    df_out = df.groupby("kegg").sum(numeric_only=True).reset_index()
+    df_out = df.groupby("kegg_id").sum(numeric_only=True).reset_index()
     df_out.to_csv(PATH_OUT, sep="\t", index=False)
 
     return len(df_out)

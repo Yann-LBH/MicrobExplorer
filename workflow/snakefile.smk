@@ -99,6 +99,10 @@ def deseq2(pattern, sources_key):
     return expand(pattern, source=active_sources)
 
 
+def get_graphs_input(wildcards):
+    return TREATMENT_SOURCES[wildcards.source]
+
+
 def pca(pattern, sources_key):
     """Generates targets for PCA if the run_pca flag is active in the config."""
     if not config.get("run_pca", True):  # Default to True if the flag isn't set yet
@@ -593,7 +597,7 @@ rule kegg_standardization_agregation:
 rule kegg_merge_input_pathway_levels:
     input:
         data=KEGG_TREATMENT + "022.Aggregated/stand_aggreg_{sample}_kegg.tsv",
-        input_pathway=config["input_path"]["pathway_bakta"]["local_path"]
+        pathway=config["input_path"]["pathway_bakta"]["local_path"]
     output:
         taxaname=KEGG_TREATMENT + "023.Annotated/annotated_{sample}_kegg.tsv"
     conda:
@@ -643,7 +647,7 @@ rule plot_stackedbarplot_deseq2:
 
 rule plot_stackedbarplot:
     input:
-        data=lambda w: TREATMENT_SOURCES[w.source],
+        data=get_graphs_input,
         metadata=config["input_path"]["metadata"]
     output:
         pdf=pjoin(
@@ -680,7 +684,7 @@ rule plot_heatmap:
         phyloseq_obj=pjoin(
             config["output_path"]["rds"], "{source}", "phyloseq_{source}.rds"
         ),
-        data=lambda w: TREATMENT_SOURCES[w.source],
+        data=get_graphs_input,
         metadata=config["input_path"]["metadata"]
     output:
         pdf=pjoin(
@@ -705,7 +709,7 @@ rule plot_heatmap:
 
 rule plot_pca:
     input:
-        data=lambda w: TREATMENT_SOURCES[w.source],
+        data=get_graphs_input,
         metadata=config["input_path"]["metadata"],
         physico=config["input_path"]["physico_params"]
     output:

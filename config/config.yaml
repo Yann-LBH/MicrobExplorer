@@ -73,7 +73,7 @@ datatypes:
     deseq2:    ["contigs", "kegg"]
   heatmap: ["reads", "contigs", "kegg"]
   volcano: ["contigs", "kegg"]
-  pca: ["reads", "contigs"]
+  pca: ["reads", "contigs", "kegg"]
   qc: ["reads", "contigs", "kegg"]
 
 
@@ -164,6 +164,7 @@ plots:
     taxon_rank:
       reads: "species"
       contigs: "genus"
+      kegg: "level_3"
     color_opt: "turbo"
     clust_method: "ward.D2" # Options: "ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid"
     distance_method: "bray" # Options: "euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski"

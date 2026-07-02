@@ -19,7 +19,7 @@ logging.basicConfig(
 
 # Pré-compilation regex — justifié car appelée sur chaque ligne
 KEGG_PATTERN = re.compile(r"K\d{5}")
-HEADER = ["contig", "kegg", "gene_length"]
+HEADER = ["contig_id", "kegg_id", "gene_length"]
 
 
 def process_gff_kegg(PATH_IN: str, PATH_OUT: str) -> int:
@@ -56,8 +56,8 @@ def process_gff_kegg(PATH_IN: str, PATH_OUT: str) -> int:
 # --- Exécution ---
 if __name__ == "__main__":
 
-    PATH_IN = snakemake.input.gff
-    PATH_OUT = snakemake.output.tsv
+    PATH_IN = snakemake.input.raw_data
+    PATH_OUT = snakemake.output.extracted
 
     # Report
     sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))
