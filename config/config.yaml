@@ -32,7 +32,6 @@ input_path:
     url : "https://rest.kegg.jp/get/br:ko00001"
     local_path: "data/pathway_bakta/pathway.tsv"
   physico_params: "data/physico_parameters/parameters.xlsx"
-  gff3: "data/gff3"
 
 output_path:
   treatment: "results/treatment/"
@@ -40,6 +39,7 @@ output_path:
   rds: "results/rds/"
   parquet: "results/parquet/"
   qc: "results/qc/"
+  audit: "LOGS/audit/final_pipeline_audit.txt"
 # ==========================================================================
 
 # ==========================================================================
@@ -52,10 +52,11 @@ output_path:
 run_taxonomy:     True
 run_reads:        True
 run_contigs:      True
-run_kegg:         False
+run_kegg:         True
 run_plots:        True
 run_deseq2:       True
 run_phyloseq:     True
+run_pca:          True
 run_physico:      True
 run_qc:           True
 
@@ -72,6 +73,7 @@ datatypes:
     deseq2:    ["contigs", "kegg"]
   heatmap: ["reads", "contigs", "kegg"]
   volcano: ["contigs", "kegg"]
+  pca: ["reads", "contigs"]
   qc: ["reads", "contigs", "kegg"]
 
 
@@ -89,7 +91,7 @@ phyloseq:
 # Change this list to use only the contrasts you need
 deseq2:
   contrasts: ["ref", "date", "combo"]  # Options: "ref", "date", "combo"
-  ref: "TD1"
+  ref: "TD1" # enter your key ref, it will use all sample with this key as ref
 
 # Reads parameters
 reads:
@@ -126,7 +128,7 @@ plots:
 # Global
   shared:
     theme: "theme_minimal"
-    palette: "Turbo"
+    palette: "turbo"
     width: 10
     height: 8
     title:
@@ -155,14 +157,19 @@ plots:
     top_n: 10
     dim_x: 1
     dim_y: 2
-    physico_cols: "pH"
+    physico_cols: "pH" # use any parameters from the physico_parameters file
 
   heatmap:
     top_n: 50
-    clust_method: brad
-    #cluster_rows: True
+    taxon_rank:
+      reads: "species"
+      contigs: "genus"
+    color_opt: "turbo"
+    clust_method: "ward.D2" # Options: "ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid"
+    distance_method: "bray" # Options: "euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski"
 
   volcano:
     pvalue_threshold : 0.05
     lfc_treshold : 1.3
+    top_n: 10
 # ==========================================================================

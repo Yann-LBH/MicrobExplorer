@@ -8,8 +8,8 @@
 
 library(data.table)
 library(readxl)
-library(arrow)
 library(DESeq2)
+library(arrow)
 
 DATA     <- as.character(snakemake@input[["data"]])
 METADATA <- as.character(snakemake@input[["metadata"]])
@@ -18,58 +18,88 @@ PARQUET  <- as.character(snakemake@output[["parquet"]])
 
 # Controls and parameters
 CONTRASTS <- tolower(as.character(snakemake@params[["contrasts"]]))[1]
-REF       <- tolower(as.character(snakemake@params[["ref"]]))[1]
+REF       <- as.character(snakemake@params[["ref"]])[1] # Case-sensitive matching (e.g., "TD1")
 
 # ==========================================================================
 # 1. Loading Metadata and Files
 # ==========================================================================
-meta_dt <- as.data.table(read_xlsx(METADATA))
+# All script comments are provided in English as requested.
 
-# ✅ FIXED: Corrected parsing format to match the "dd/mm/yyyy" layout from Excel
+meta_dt <- as.data.table(read_xlsx(METADATA))
 meta_dt[, Date_Real := as.Date(date, format = "%d/%m/%Y")]
 
-# Handle dynamic reference defaults
-if (is.null(REF) || REF == "" || is.na(REF)) {
-  REF <- sort(meta_dt$name)[1]
+# ✅ FIXED: Use your new Excel column "group" directly. Fallback to "name" only if missing.
+if (!"group" %in% names(meta_dt)) {
+  meta_dt[, group := name]
 }
 
-# Scan input TSV files
-files <- list.files(DATA, pattern = "\\.tsv$", full.names = TRUE)
+# Validate if the REF from config exists in your Excel "group" column
+if (is.null(REF) || REF == "" || is.na(REF) || !(REF %in% meta_dt$group)) {
+  if (!is.null(REF) && REF != "" && !is.na(REF)) {
+    cat("⚠️ WARNING: The 'ref' defined in config (", REF, ") was not found in the Excel 'group' column. Falling back to default.\n")
+  }
+  REF <- sort(meta_dt$group)[1]
+}
 
 # Cross-load files matching existing sample ids
-raw_list <- lapply(files, function(f) {
+raw_list <- lapply(DATA, function(f) {
   file_name <- basename(f)
   
-  matched_sample <- meta_dt[sapply(sample_id, function(sid) grepl(sid, file_name)), sample_id]
-  if (length(matched_sample) == 0) return(NULL) 
+  matched_sample <- meta_dt$sample_id[sapply(meta_dt$sample_id, function(sid) grepl(sid, file_name))]
+
+  if (length(matched_sample) == 0 || is.na(matched_sample[1]) || matched_sample[1] == "") {
+    stop(paste0(
+      "\n❌ ERROR: No matching sample_id found in metadata for file: '", file_name, "'\n",
+      "Please check if this sample is declared in your metadata.xlsx or verify the filename."
+    ))
+  }
   
   dt <- fread(f, showProgress = FALSE)
-  
-  # ✅ FIXED: Force lowercase column headers to match Python step 6 updates
+  if (nrow(dt) == 0) return(NULL)
+
   setnames(dt, tolower(names(dt)))
-  setnames(dt, ncol(dt), matched_sample) 
   
-  list(dt = dt, sample_id = matched_sample)
+  # Identify the ID column
+  current_id <- base::intersect(c("read_id", "contig_id", "ko", "kegg"), names(dt))[1]
+  if (is.na(current_id)) return(NULL)
+  
+  # Identify the count column and enforce numeric representation
+  abundance_col <- base::intersect(c("count", "read_mapped"), names(dt))[1]
+  if (is.na(abundance_col)) {
+    abundance_col <- names(dt)[ncol(dt)]
+  }
+  dt[, (abundance_col) := lapply(.SD, as.numeric), .SDcols = abundance_col]
+  
+  setnames(dt, abundance_col, matched_sample[1])
+  dt <- dt[, c(current_id, matched_sample[1]), with = FALSE]
+  
+  list(dt = dt, sample_id = matched_sample[1])
 })
 
 raw_list <- Filter(Negate(is.null), raw_list)
 
-# ✅ FIXED: Dynamically find the ID column (contig_id, read_id, or ko) instead of hardcoding "kegg"
-sample_headers <- unique(unlist(lapply(raw_list, `[[`, "dt")))
-id_col_candidate <- intersect(c("contig_id", "read_id", "ko", "kegg"), names(raw_list[[1]]$dt))[1]
+if (length(raw_list) == 0) {
+  stop("🚨 Step error: raw_list is empty. No valid sample data tables were loaded for DESeq2 analysis.")
+}
 
-# Merge count matrices using the discovered key identifier
+possible_ids <- base::intersect(c("contig_id", "read_id", "ko", "kegg"), names(raw_list[[1]]$dt))[1]
+if (is.na(possible_ids)) {
+  possible_ids <- "read_id"
+}
+
+# Merge count matrices
 count_data <- Reduce(
-  function(a, b) merge(a, b, by = id_col_candidate, all = FALSE),
+  function(a, b) merge(a, b, by = possible_ids, all = FALSE),
   lapply(raw_list, `[[`, "dt")
 )
 
-count_matrix <- as.matrix(count_data[, !id_col_candidate, with = FALSE])
-rownames(count_matrix) <- count_data[[id_col_candidate]]
+count_matrix <- as.matrix(count_data[, !possible_ids, with = FALSE])
+rownames(count_matrix) <- count_data[[possible_ids]]
 count_matrix <- round(count_matrix)
 
-# Synchronize metadata structure with loaded matrix values
+# Synchronize metadata (Keep it as data.table to prevent downstream "." query crashes)
 meta_dt <- meta_dt[sample_id %in% colnames(count_matrix)]
+
 rm(raw_list)
 
 # ==========================================================================
@@ -84,46 +114,46 @@ extract_results <- function(dds, contrast_vec, nom_contraste, extra_cols) {
 }
 
 # ==========================================================================
-# 2. Condition Analysis (Condition Name vs Reference)
+# 2. Condition Analysis (Group vs Reference)
 # ==========================================================================
 run_deseq_by_name_ref <- function(count_matrix, meta_dt, REF, RDS, PARQUET) {
-  col_data <- as.data.frame(meta_dt[, .(sample_id, name)])
+  col_data <- as.data.frame(meta_dt[, .(sample_id, group)])
   rownames(col_data) <- col_data$sample_id
   
-  col_data$name <- relevel(as.factor(col_data$name), ref = REF)
+  col_data$group <- relevel(as.factor(col_data$group), ref = REF)
 
-  dds <- DESeqDataSetFromMatrix(count_matrix, col_data, design = ~name)
+  dds <- DESeqDataSetFromMatrix(count_matrix, col_data, design = ~ group)
   dds <- estimateSizeFactors(dds, type = "poscounts")
   dds <- DESeq(dds, test = "Wald", fitType = "parametric")
-  
-  saveRDS(dds, RDS) 
 
-  groupes <- levels(col_data$name)
+  groupes <- levels(col_data$group)
 
   results_dt <- rbindlist(lapply(
     groupes[groupes != REF],
     function(g1) {
       extract_results(
         dds,
-        c("name", g1, REF),
+        c("group", g1, REF),
         paste0(g1, "_vs_", REF),
         list(Test_Group = g1, Ref_Group = REF)
       )
     }
   ))
-
-  write_parquet(results_dt, PARQUET)
-  message("✓ By condition (ref ", REF, ") : ", nrow(results_dt), " rows generated.")
+  
+  return(list(dt = results_dt, dds = dds))
+  return(results_dt)
+  message("✓ By group reference (ref ", REF, ") : ", nrow(results_dt), " rows generated.")
 }
 
 # ==========================================================================
 # 3. Chronological Analysis (T vs T-1)
 # ==========================================================================
-run_deseq_by_date <- function(count_matrix, meta_dt, PARQUET) {
+run_deseq_by_date <- function(count_matrix, meta_dt, RDS, PARQUET) {
   col_data <- as.data.frame(meta_dt[, .(sample_id, date, Date_Real)])
   rownames(col_data) <- col_data$sample_id
   col_data$Date_Group <- as.factor(col_data$date)
 
+  # ✅ INDEPENDENT: Continues to use Date_Group for timeline analysis
   dds <- DESeqDataSetFromMatrix(count_matrix, col_data, design = ~Date_Group)
   dds <- estimateSizeFactors(dds, type = "poscounts")
   dds <- DESeq(dds, test = "Wald", fitType = "parametric")
@@ -149,44 +179,66 @@ run_deseq_by_date <- function(count_matrix, meta_dt, PARQUET) {
     }
   ))
 
-  write_parquet(results_dt, gsub("\\.parquet$", "_time.parquet", PARQUET))
+  return(list(dt = results_dt, dds = dds))
+  return(results_dt)
   message("✓ By timeline (T vs T-1) : ", nrow(results_dt), " rows generated.")
 }
 
 # ==========================================================================
 # 4. Pairwise Combination Analysis (All Pairs)
 # ==========================================================================
-run_deseq_by_name_combos <- function(count_matrix, meta_dt, PARQUET) {
-  col_data <- as.data.frame(meta_dt[, .(sample_id, name)])
+run_deseq_by_name_combos <- function(count_matrix, meta_dt, RDS, PARQUET) {
+  col_data <- as.data.frame(meta_dt[, .(sample_id, group)])
   rownames(col_data) <- col_data$sample_id
-  col_data$name <- as.factor(col_data$name)
+  col_data$group <- as.factor(col_data$group)
 
-  dds <- DESeqDataSetFromMatrix(count_matrix, col_data, design = ~name)
+  # ✅ FIXED: Uses your Excel "group" column to get clean all-vs-all combinations
+  dds <- DESeqDataSetFromMatrix(count_matrix, col_data, design = ~group)
   dds <- estimateSizeFactors(dds, type = "poscounts")
   dds <- DESeq(dds, test = "Wald", fitType = "parametric")
 
-  combos <- combn(levels(col_data$name), 2, simplify = FALSE)
+  combos <- combn(levels(col_data$group), 2, simplify = FALSE)
 
   results_dt <- rbindlist(lapply(combos, function(pair) {
     g2 <- pair[1]
     g1 <- pair[2]
     extract_results(
       dds,
-      c("name", g1, g2),
+      c("group", g1, g2),
       paste0(g1, "_vs_", g2),
       list(Test_Group = g1, Ref_Group = g2)
     )
   }))
-
-  write_parquet(results_dt, gsub("\\.parquet$", "_combos.parquet", PARQUET))
+  
+  return(list(dt = results_dt, dds = dds))
+  return(results_dt)
   message("✓ By group combinations (all combos) : ", nrow(results_dt), " rows generated.")
 }
 
 # ==========================================================================
 # Execution Core
 # ==========================================================================
-run_deseq_by_name_ref(count_matrix, meta_dt, REF, RDS, PARQUET)
-run_deseq_by_date(count_matrix, meta_dt, PARQUET)
-run_deseq_by_name_combos(count_matrix, meta_dt, PARQUET)
 
-message("✓ DESeq2 pipeline workflow finished successfully.")
+# 1. Run all analyses and return both the results table AND the dds object from each
+# (Make sure your functions return a list(dt = results_dt, dds = dds))
+res_ref    <- run_deseq_by_name_ref(count_matrix, meta_dt, REF) 
+res_date   <- run_deseq_by_date(count_matrix, meta_dt)
+res_combos <- run_deseq_by_name_combos(count_matrix, meta_dt)
+
+# 2. Compile all dds models into a single structured list for the RDS output
+master_rds <- list(
+  ref   = res_ref$dds,
+  date  = res_date$dds,
+  combo = res_combos$dds
+)
+saveRDS(master_rds, RDS)
+
+# 3. Tag and bind all statistical tables together for the Parquet output
+dt_ref   <- res_ref$dt[, Contrast_Type := "ref"]
+dt_date  <- res_date$dt[, Contrast_Type := "date"]
+dt_combo <- res_combos$dt[, Contrast_Type := "combo"]
+
+master_parquet <- rbindlist(list(dt_ref, dt_date, dt_combo), use.names = TRUE, fill = TRUE)
+write_parquet(master_parquet, PARQUET)
+
+message("✅ Master RDS and Parquet files compiled successfully.")

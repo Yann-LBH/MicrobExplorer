@@ -41,7 +41,22 @@ df_list <- lapply(DATA, function(f) {
   return(dt)
 })
 
+#merge all sample dataframes into one large data.table
 all_data <- rbindlist(Filter(Negate(is.null), df_list), use.names = TRUE, fill = TRUE)
+
+possible_ids <- c("read_id", "contig_id", "kegg_id")
+id_col <- base::intersect(possible_ids, colnames(all_data))[1]
+
+# Security check: if none of the IDs match, fallback to the first one to avoid crash
+if (is.na(id_col)) {
+  id_col <- "read_id"
+}
+
+all_data[, (id_col) := as.character(get(id_col))]
+
+all_data[is.na(get(id_col)) | get(id_col) == "" | get(id_col) == "NA", (id_col) := scientific_name]
+
+all_data <- unique(all_data)
 
 # ==========================================================================
 # 2. Détection Automatique du Type de Données (KEGG vs Taxonomie)

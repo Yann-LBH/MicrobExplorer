@@ -13,6 +13,7 @@ dependencies:
   - r-ggplot2
   - r-data.table
   - r-readxl
+  - r-writexl
   - r-circlize
   - r-viridislite
   - r-vegan
@@ -23,6 +24,7 @@ dependencies:
   - r-factominer
   - r-compositions
   - r-missmda
+  - r-rlang
   - r-purrr
   - r-readr
 

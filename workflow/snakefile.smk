@@ -21,7 +21,7 @@ DATA = pd.read_table(config["samples_file"], index_col=0) #get the samples ID fr
 SAMPLES = DATA.index.tolist()
 READS_FILES = {sample: f"{config['input_path']['data_raw']['reads']}reads_{sample}.kaijuNR" for sample in SAMPLES}
 CONTIGS_FILES = {sample: f"{config['input_path']['data_raw']['contigs']}count-contigs-coassembly-{sample}.tsv" for sample in SAMPLES}
-KEGG_FILES = {sample: f"{config['input_path']['data_raw']['kegg']}kegg_{sample}.gff3" for sample in SAMPLES}
+KEGG_FILES = f"{config['input_path']['data_raw']['kegg']}coassembly_bakta.gff3"
 
 MODE_TO_FILENAME = {
     "pathway": "pathway_abundance",
@@ -99,6 +99,14 @@ def deseq2(pattern, sources_key):
     return expand(pattern, source=active_sources)
 
 
+def pca(pattern, sources_key):
+    """Generates targets for PCA if the run_pca flag is active in the config."""
+    if not config.get("run_pca", True):  # Default to True if the flag isn't set yet
+        return []
+    active_sources = filter_active_sources(config["datatypes"][sources_key])
+    return expand(pattern, source=active_sources)
+
+
 def get_qc_inputs(source):
     return [
         pjoin(folder, fname.format(sample=s))
@@ -161,8 +169,31 @@ def get_targets():
             "heatmap",
         )
         targets += phyloseq(
-            pjoin(config["output_path"]["parquet"], "heatmap_{source}.parquet"),
+            pjoin(config["output_path"]["parquet"], "{source}","heatmap_{source}.parquet"),
             "heatmap",
+        )
+
+        # PCA
+        targets += pca(
+            pjoin(config["output_path"]["plots"], "pca", "PCA_{source}.pdf"),
+            "pca"
+        )
+        targets += pca(
+            pjoin(config["output_path"]["parquet"], "{source}", "pca_{source}.parquet"),
+            "pca"
+        )
+        targets += pca(
+            pjoin(config["output_path"]["plots"], "pca", "pca_contributions_{source}.xlsx"),
+            "pca"
+        )
+
+        targets += deseq2(
+            pjoin(
+                config["output_path"]["parquet"],
+                "{source}",
+                "volcano_from_deseq2_{source}.parquet",
+            ),
+            "volcano",
         )
 
         # Stackedbarplots standard
@@ -191,6 +222,7 @@ def get_targets():
         targets += deseq2(
             pjoin(
                 config["output_path"]["parquet"],
+                "{source}",
                 "stackedbarplot_deseq2_{source}.parquet",
             ),
             "deseq2",
@@ -243,7 +275,7 @@ def get_targets():
     if config["run_qc"]:
         datatypes = list(
             QC_STEPS.keys()
-        )  # ["reads", "contigs"] — tiré du dict, pas en dur
+        )
 
         active_qc_dt = [
             source
@@ -276,7 +308,7 @@ def get_targets():
 
 rule all:
     input:
-        "logs/final_pipeline_report.txt",
+        config["output_path"]["audit"],
         get_targets(),
 
 
@@ -504,7 +536,7 @@ rule contigs_add_taxaname:
 
 rule kegg_extraction:
     input:
-        raw_data=lambda w: KEGG_FILES[w.sample]
+        raw_data=KEGG_FILES
     output:
         extracted=KEGG_TREATMENT + "1.Extracted/extracted_{sample}_kegg.tsv"
     conda:
@@ -578,7 +610,7 @@ rule kegg_merge_input_pathway_levels:
 rule plot_stackedbarplot_deseq2:
     input:
         deseq_files=pjoin(
-            config["output_path"]["rds"], "{source}", "deseq2_{source}.rds"
+            config["output_path"]["parquet"], "{source}", "deseq2_{source}.parquet"
         ),
         phyloseq_obj=pjoin(
             config["output_path"]["rds"], "{source}", "phyloseq_{source}.rds"
@@ -592,7 +624,9 @@ rule plot_stackedbarplot_deseq2:
             "Stackedbarplot_deseq2_{source}.pdf",
         ),
         parquet=pjoin(
-            config["output_path"]["parquet"], "stackedbarplot_deseq2_{source}.parquet"
+            config["output_path"]["parquet"], 
+            "{source}", 
+            "stackedbarplot_deseq2_{source}.parquet"
         )
     conda:
         "envs/r_env.yaml"
@@ -655,13 +689,16 @@ rule plot_heatmap:
             "{source}",
             "Heatmap_{source}.pdf",
         ),
-        parquet=pjoin(config["output_path"]["parquet"], "heatmap_{source}.parquet")
+        parquet=pjoin(config["output_path"]["parquet"], "{source}", "heatmap_{source}.parquet")
     conda:
         "envs/r_env.yaml"
     params:
         shared=config["plots"]["shared"],
+        taxon_rank=lambda w: config["plots"]["heatmap"]["taxon_rank"][w.source],
+        color_opt=config["plots"]["heatmap"]["color_opt"],
         top_n=config["plots"]["heatmap"]["top_n"],
-        clust_method=config["plots"]["heatmap"]["clust_method"]
+        clust_method=config["plots"]["heatmap"]["clust_method"],
+        distance_method=config["plots"]["heatmap"]["distance_method"],
     script:
         os.path.abspath("workflow/scripts/plots/Heatmap.R")
 
@@ -673,8 +710,8 @@ rule plot_pca:
         physico=config["input_path"]["physico_params"]
     output:
         pdf=pjoin(config["output_path"]["plots"], "pca", "PCA_{source}.pdf"),
-        parquet=pjoin(config["output_path"]["parquet"], "pca_{source}.parquet"),
-        csv=pjoin("results", "infos", "pca", "pca_contributions_{source}.csv")
+        parquet=pjoin(config["output_path"]["parquet"], "{source}", "pca_{source}.parquet"),
+        xlsx=pjoin(config["output_path"]["plots"], "pca", "pca_contributions_{source}.xlsx")
     conda:
         "envs/r_env.yaml"
     params:
@@ -710,7 +747,8 @@ rule plot_volcano_DESeq2:
     params:
         padj=config["plots"]["volcano"]["pvalue_threshold"],
         lfc=config["plots"]["volcano"]["lfc_treshold"],
-        contrast=config["deseq2"]["contrasts"]
+        contrast=config["deseq2"]["contrasts"],
+        top_n=config["plots"]["volcano"]["top_n"]
     script:
         os.path.abspath("workflow/scripts/plots/Volcano_from_DESeq2.R")
 
@@ -778,11 +816,9 @@ rule generate_pipeline_report:
         # Enlèvement de la virgule de fin pour éviter le tuple fantôme
         get_targets()
     output:
-        report="logs/final_pipeline_report.txt"
+        report=config["output_path"]["audit"]
     run:
-        import os
 
-        # English comments in script blocks
         failed_files = {}
 
         def check_files(category, file_list):
@@ -795,18 +831,17 @@ rule generate_pipeline_report:
             if missing:
                 failed_files[category] = missing
 
-        # CORRECTION : Utilisation de snakemake.config au lieu de config
         # --- 1. Taxonomy ---
-        if snakemake.config["run_taxonomy"]:
+        if config["run_taxonomy"]:
             check_files(
                 "Taxonomy Databases",
                 [
-                    snakemake.config["input_path"]["taxonomy_ncbi"]["local_path"],
-                    snakemake.config["input_path"]["pathway_bakta"]["local_path"],
+                    config["input_path"]["taxonomy_ncbi"]["local_path"],
+                    config["input_path"]["pathway_bakta"]["local_path"],
                 ],
             )
         # --- 2. Reads ---
-        if snakemake.config["run_reads"]:
+        if config["run_reads"]:
             check_files(
                 "Reads Annotations (TSV)",
                 expand(
@@ -815,7 +850,7 @@ rule generate_pipeline_report:
                 ),
             )
         # --- 3. Contigs ---
-        if snakemake.config["run_contigs"]:
+        if config["run_contigs"]:
             check_files(
                 "Contigs Annotations (TSV)",
                 expand(
@@ -825,7 +860,7 @@ rule generate_pipeline_report:
                 ),
             )
         # --- 4. KEGG ---
-        if snakemake.config["run_kegg"]:
+        if config["run_kegg"]:
             check_files(
                 "KEGG Annotations (TSV)",
                 expand(
@@ -834,12 +869,12 @@ rule generate_pipeline_report:
                 ),
             )
         # --- 5. Phyloseq Objects ---
-        if snakemake.config["run_phyloseq"]:
+        if config["run_phyloseq"]:
             check_files(
                 "Phyloseq (RDS)",
                 phyloseq(
                     pjoin(
-                        snakemake.config["output_path"]["rds"],
+                        config["output_path"]["rds"],
                         "{source}",
                         "phyloseq_{source}.rds",
                     ),
@@ -847,12 +882,12 @@ rule generate_pipeline_report:
                 ),
             )
         # --- 6. DESeq2 Objects & Parquets ---
-        if snakemake.config["run_deseq2"]:
+        if config["run_deseq2"]:
             check_files(
                 "DESeq2 (RDS/Parquet)",
                 deseq2(
                     pjoin(
-                        snakemake.config["output_path"]["rds"],
+                        config["output_path"]["rds"],
                         "{source}",
                         "deseq2_{source}.rds",
                     ),
@@ -860,7 +895,7 @@ rule generate_pipeline_report:
                 )
                 + deseq2(
                     pjoin(
-                        snakemake.config["output_path"]["parquet"],
+                        config["output_path"]["parquet"],
                         "{source}",
                         "deseq2_{source}.parquet",
                     ),
@@ -868,12 +903,12 @@ rule generate_pipeline_report:
                 ),
             )
         # --- 7. Plots & Associated Parquets ---
-        if snakemake.config["run_plots"]:
+        if config["run_plots"]:
             plot_targets = []
             # Heatmaps
             plot_targets += phyloseq(
                 pjoin(
-                    snakemake.config["output_path"]["plots"],
+                    config["output_path"]["plots"],
                     "heatmap",
                     "{source}",
                     "Heatmap_{source}.pdf",
@@ -881,17 +916,17 @@ rule generate_pipeline_report:
                 "heatmap",
             )
             plot_targets += phyloseq(
-                pjoin(snakemake.config["output_path"]["parquet"], "heatmap_{source}.parquet"),
+                pjoin(config["output_path"]["parquet"], "heatmap_{source}.parquet"),
                 "heatmap",
             )
             # Stackedbarplots standard
-            for mode, sources in snakemake.config["datatypes"]["stackedbarplot"][
+            for mode, sources in config["datatypes"]["stackedbarplot"][
                 "standard"
             ].items():
                 active_sources = filter_active_sources(sources)
                 plot_targets += expand(
                     pjoin(
-                        snakemake.config["output_path"]["plots"],
+                        config["output_path"]["plots"],
                         "stackedbarplot",
                         mode,
                         "Stackedbarplot_"
@@ -903,7 +938,7 @@ rule generate_pipeline_report:
             # Stackedbarplots DESeq2
             plot_targets += deseq2(
                 pjoin(
-                    snakemake.config["output_path"]["plots"],
+                    config["output_path"]["plots"],
                     "stackedbarplot",
                     "deseq2",
                     "Stackedbarplot_deseq2_{source}.pdf",
@@ -912,7 +947,7 @@ rule generate_pipeline_report:
             )
             plot_targets += deseq2(
                 pjoin(
-                    snakemake.config["output_path"]["parquet"],
+                    config["output_path"]["parquet"],
                     "stackedbarplot_deseq2_{source}.parquet",
                 ),
                 "deseq2",
@@ -920,7 +955,7 @@ rule generate_pipeline_report:
             # Volcano
             plot_targets += deseq2(
                 pjoin(
-                    snakemake.config["output_path"]["plots"],
+                    config["output_path"]["plots"],
                     "volcano",
                     "{source}",
                     "Volcano_deseq2_{source}.pdf",
@@ -929,7 +964,7 @@ rule generate_pipeline_report:
             )
             plot_targets += deseq2(
                 pjoin(
-                    snakemake.config["output_path"]["parquet"],
+                    config["output_path"]["parquet"],
                     "{source}",
                     "volcano_from_deseq2_{source}.parquet",
                 ),
@@ -938,25 +973,25 @@ rule generate_pipeline_report:
 
             check_files("Plots & Figure Parquets", plot_targets)
         # --- 8. Physico ---
-        if snakemake.config["run_physico"]:
+        if config["run_physico"]:
             check_files(
                 "Physico Plots",
                 [
                     pjoin(
-                        snakemake.config["output_path"]["plots"],
+                        config["output_path"]["plots"],
                         "physico",
                         "Physico_plots.pdf",
                     )
                 ],
             )
         # --- 9. Quality Control (QC) ---
-        if snakemake.config["run_qc"]:
+        if config["run_qc"]:
             datatypes = list(QC_STEPS.keys())
             active_qc_dt = [
                 s
                 for s in datatypes
                 if s in QC_STEPS
-                and snakemake.config.get("sources", {}).get(s, False)
+                and config.get("sources", {}).get(s, False)
                 and len(get_qc_inputs(s)) > 0
             ]
             if active_qc_dt:
@@ -965,12 +1000,12 @@ rule generate_pipeline_report:
                     expand(
                         [
                             pjoin(
-                                snakemake.config["output_path"]["qc"],
+                                config["output_path"]["qc"],
                                 "qc",
                                 "Report_QC_final_{source}.pdf",
                             ),
                             pjoin(
-                                snakemake.config["output_path"]["parquet"],
+                                config["output_path"]["parquet"],
                                 "report_qc_final_{source}.parquet",
                             ),
                         ],
@@ -979,7 +1014,7 @@ rule generate_pipeline_report:
                 )
         
         # --- Write the final markdown-like report ---
-        with open(snakemake.output.report, "w") as f:
+        with open(config["output_path"]["audit"], "w") as f:
             f.write("==================================================\n")
             f.write("         PIPELINE RUN AUDIT REPORT                \n")
             f.write("==================================================\n\n")
@@ -1007,9 +1042,9 @@ rule generate_pipeline_report:
         # Terminal feedback
         if failed_files:
             print(
-                f"\n⚠️ [Snakemake Audit] Some steps failed. Check the summary here: {snakemake.output.report}\n"
+                f"\n⚠️ [Snakemake Audit] Some steps failed. Check the summary here: {config['output_path']['audit']}\n"
             )
         else:
             print(
-                f"\n🎉 [Snakemake Audit] Perfect run! Summary generated: {snakemake.output.report}\n"
+                f"\n🎉 [Snakemake Audit] Perfect run! Summary generated: {config['output_path']['audit']}\n"
             )

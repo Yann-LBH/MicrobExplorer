@@ -24,7 +24,7 @@ library(arrow)
 
 # Inputs
 DATA     <- as.character(snakemake@input[["data"]])
-METADATA <- as.character(snakemake@input[["metadata"]])
+METADATA <- as.character(c(snakemake@input[["metadata"]])[1])
 
 # Outputs
 PDF     <- as.character(c(snakemake@output[["pdf"]])[1])
