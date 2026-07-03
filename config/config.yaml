@@ -39,7 +39,7 @@ output_path:
   rds: "results/rds/"
   parquet: "results/parquet/"
   qc: "results/qc/"
-  audit: "LOGS/audit/final_pipeline_audit.txt"
+  audit: "results/audit/final_MicrobExplorer_audit.html"
 # ==========================================================================
 
 # ==========================================================================
@@ -158,6 +158,10 @@ plots:
     dim_x: 1
     dim_y: 2
     physico_cols: "pH" # use any parameters from the physico_parameters file
+    rank:
+      reads: "species"
+      contigs: "genus"
+      kegg: "level_3"
 
   heatmap:
     top_n: 50

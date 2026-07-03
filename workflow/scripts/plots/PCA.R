@@ -38,7 +38,8 @@ TOP_N <- as.integer(snakemake@params[["top_n"]])[1]
 POINT_SIZE <- as.numeric(snakemake@params[["point_size"]])[1]
 DIM_X <- as.integer(snakemake@params[["dim_x"]])[1]
 DIM_Y <- as.integer(snakemake@params[["dim_y"]])[1]
-PHYSICO_COLS <- as.character(snakemake@params[["physico_cols"]])
+PHYSICO_COLS <- as.character(snakemake@params[["physico_cols"]])[1]
+RANK <- as.character(snakemake@params[["rank"]])[1]
 
 # Wildcards
 SOURCE <- as.character(snakemake@wildcards[["source"]])
@@ -79,10 +80,16 @@ all_sample_ids <- meta$sample_id
 # Dynamically map column names based on source type
 if (grepl("read", SOURCE, ignore.case = TRUE)) {
   ID_COL <- "read_id"
+  NAME_COL      <- if (RANK != "") RANK else "read_id"
   ABUNDANCE_COL <- "cpm"
-} else {
+} else if (grepl("contig", SOURCE, ignore.case = TRUE)) {
   ID_COL <- "contig_id"
+  NAME_COL      <- if (RANK != "") RANK else "contig_id"
   ABUNDANCE_COL <- "rpkm"
+}  else {
+  ID_COL <- "ko"
+  NAME_COL      <- if (RANK != "") RANK else "gene_description"
+  ABUNDANCE_COL <- "adj_standardization"
 }
 
 files <- unlist(DATA)
@@ -90,14 +97,14 @@ files <- unlist(DATA)
 # Read all TSV files and map the sample_id using metadata matching
 df_list <- lapply(files, function(f) {
   file_name_only <- basename(f)
-  
   matched_id <- all_sample_ids[sapply(all_sample_ids, function(id) grepl(id, file_name_only, fixed = TRUE))]
   
   if (length(matched_id) == 0) {
     stop(paste("Could not map any sample_id from metadata to the file:", file_name_only))
   }
   
-  dt <- fread(f, select = c(ID_COL, ABUNDANCE_COL))
+  dt <- fread(f, select = c(ID_COL, NAME_COL, ABUNDANCE_COL))
+  dt[get(NAME_COL) == "" | is.na(get(NAME_COL)), (NAME_COL) := get(ID_COL)]
   dt[, sample_id := matched_id[1]]
   dt[, (ABUNDANCE_COL) := as.numeric(get(ABUNDANCE_COL))]
   return(dt)
@@ -111,7 +118,7 @@ df_final <- merge(df_final, meta[, .(sample_id, date, name)], by = "sample_id", 
 # ==========================================================================
 # 2. Pivot wide
 # ==========================================================================
-formula_dcast <- as.formula(paste("date + name ~", ID_COL))
+formula_dcast <- as.formula(paste("date + name ~", NAME_COL))
 
 tableau_large <- dcast(
   df_final,
