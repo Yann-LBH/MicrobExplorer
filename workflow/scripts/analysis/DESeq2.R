@@ -20,7 +20,7 @@ RDS      <- as.character(snakemake@output[["rds"]])[1]
 PARQUET  <- as.character(snakemake@output[["parquet"]])[1]
 
 # Controls and parameters
-CONTRASTS <- tolower(as.character(snakemake@params[["contrasts"]]))[1]
+CONTRAST_LIST <- tolower(as.character(snakemake@params[["contrast"]]))
 REF       <- as.character(snakemake@params[["ref"]])[1] # Case-sensitive matching (e.g., "TD1")
 
 # ==========================================================================
@@ -31,7 +31,6 @@ REF       <- as.character(snakemake@params[["ref"]])[1] # Case-sensitive matchin
 meta_dt <- as.data.table(read_xlsx(METADATA))
 meta_dt[, Date_Real := as.Date(date, format = "%d/%m/%Y")]
 
-# ✅ FIXED: Use your new Excel column "group" directly. Fallback to "name" only if missing.
 if (!"group" %in% names(meta_dt)) {
   meta_dt[, group := name]
 }
@@ -85,7 +84,7 @@ if (length(raw_list) == 0) {
   stop("🚨 Step error: raw_list is empty. No valid sample data tables were loaded for DESeq2 analysis.")
 }
 
-possible_ids <- base::intersect(c("contig_id", "read_id", "kegg_id"), names(raw_list[[1]]$dt))[1]
+possible_ids <- base::intersect(c("read_id", "contig_id", "kegg_id"), names(raw_list[[1]]$dt))[1]
 if (is.na(possible_ids)) {
   possible_ids <- "read_id"
 }
@@ -156,7 +155,6 @@ run_deseq_by_date <- function(count_matrix, meta_dt, RDS, PARQUET) {
   rownames(col_data) <- col_data$sample_id
   col_data$Date_Group <- as.factor(col_data$date)
 
-  # ✅ INDEPENDENT: Continues to use Date_Group for timeline analysis
   dds <- DESeqDataSetFromMatrix(count_matrix, col_data, design = ~Date_Group)
   dds <- estimateSizeFactors(dds, type = "poscounts")
   dds <- DESeq(dds, test = "Wald", fitType = "parametric")
@@ -190,12 +188,15 @@ run_deseq_by_date <- function(count_matrix, meta_dt, RDS, PARQUET) {
 # ==========================================================================
 # 4. Pairwise Combination Analysis (All Pairs)
 # ==========================================================================
+message("N samples in count_matrix (kegg): ", ncol(count_matrix))
+message("Colnames: ", paste(colnames(count_matrix), collapse=", "))
+message("Groups present: ", paste(unique(meta_dt$group), collapse=", "))
+print(table(meta_dt$group))
 run_deseq_by_name_combos <- function(count_matrix, meta_dt, RDS, PARQUET) {
   col_data <- as.data.frame(meta_dt[, .(sample_id, group)])
   rownames(col_data) <- col_data$sample_id
   col_data$group <- as.factor(col_data$group)
 
-  # ✅ FIXED: Uses your Excel "group" column to get clean all-vs-all combinations
   dds <- DESeqDataSetFromMatrix(count_matrix, col_data, design = ~group)
   dds <- estimateSizeFactors(dds, type = "poscounts")
   dds <- DESeq(dds, test = "Wald", fitType = "parametric")
@@ -223,25 +224,32 @@ run_deseq_by_name_combos <- function(count_matrix, meta_dt, RDS, PARQUET) {
 # ==========================================================================
 
 # 1. Run all analyses and return both the results table AND the dds object from each
-# (Make sure your functions return a list(dt = results_dt, dds = dds))
 res_ref    <- run_deseq_by_name_ref(count_matrix, meta_dt, REF) 
 res_date   <- run_deseq_by_date(count_matrix, meta_dt)
 res_combos <- run_deseq_by_name_combos(count_matrix, meta_dt)
 
-# 2. Compile all dds models into a single structured list for the RDS output
-master_rds <- list(
-  ref   = res_ref$dds,
-  date  = res_date$dds,
-  combo = res_combos$dds
-)
-saveRDS(master_rds, RDS)
-
-# 3. Tag and bind all statistical tables together for the Parquet output
+# 2. Add Contrast_Type tags to tables
 dt_ref   <- res_ref$dt[, Contrast_Type := "ref"]
 dt_date  <- res_date$dt[, Contrast_Type := "date"]
 dt_combo <- res_combos$dt[, Contrast_Type := "combo"]
 
+# 3. Compile EVERYTHING into the Master RDS file
+master_rds <- list(
+  models = list(
+    ref   = res_ref$dds,
+    date  = res_date$dds,
+    combo = res_combos$dds
+  ),
+  dt = list(
+    ref   = dt_ref,
+    date  = dt_date,
+    combo = dt_combo
+  )
+)
+saveRDS(master_rds, RDS)
+
+# 4. Compile and bind for the global Parquet output
 master_parquet <- rbindlist(list(dt_ref, dt_date, dt_combo), use.names = TRUE, fill = TRUE)
 write_parquet(master_parquet, PARQUET)
 
-message("✅ Master RDS and Parquet files compiled successfully.")
+message("✅ Master RDS (Models + Stats) and Parquet files compiled successfully.")

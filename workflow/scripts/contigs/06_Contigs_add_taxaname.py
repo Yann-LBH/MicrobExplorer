@@ -86,14 +86,15 @@ def run_annotation(PATH_IN: str, PATH_OUT: str, df_tax: pd.DataFrame) -> int:
     df_annotated = df.merge(df_tax, on="contig_id", how="left")
 
     # Fill any missing unmatched contigs with 'unclassified' for all ranks
-    df_annotated[TAX_RANKS] = df_annotated[TAX_RANKS].fillna("unclassified")
+    df_annotated[TAX_RANKS] = df_annotated[TAX_RANKS].fillna("")
 
     # Replace empty strings or whitespace-only strings with 'unclassified'
     for col in TAX_RANKS:
-        df_annotated[col] = df_annotated[col].replace(
-            r"^\s*$", "unclassified", regex=True
+        df_annotated[col] = np.where(
+            df_annotated[col].astype(str).str.strip() == "",
+            "Unclassified " + df_annotated["domain"].fillna("Unknown"),
+            df_annotated[col]
         )
-
     df_annotated.to_csv(PATH_OUT, sep="\t", index=False)
 
     return len(df_annotated)

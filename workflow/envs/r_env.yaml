@@ -27,6 +27,8 @@ dependencies:
   - r-rlang
   - r-purrr
   - r-readr
+  - r-ggrastr
+  - r-glue
 
   # Bioconductor Packages
   - bioconductor-deseq2

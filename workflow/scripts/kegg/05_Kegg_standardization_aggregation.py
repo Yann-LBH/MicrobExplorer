@@ -1,6 +1,6 @@
 ################################################################################
 # Project : "MicrobExplorer"
-# Script: "Data prepared for DEseq2"
+# Script: "Standardization of aggregation by unique KO per files"
 # Author: "Yann Le Bihan"
 # Date: "2025-12-01"
 # Link : https://github.com/Yann-LBH/MicrobExplorer
@@ -8,6 +8,7 @@
 
 import os
 import logging
+import numpy as np
 import pandas as pd
 
 # Configure logging to display time, level, and message properly
@@ -17,45 +18,44 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-METADATA_COLS = {"contig", "length", "contig_id", "gene_length", "id", "product"}
 
-
-def sum_per_kegg(PATH_IN: str, PATH_OUT: str) -> int:
+def aggregate_by_ko(PATH_IN: str, PATH_OUT: str) -> int:
     """
-    Aggregates the counts by KEGG ID.
+    Aggregate by KEGG code by summing the ‘standardization’ column.
     Returns the number of unique KOs.
     """
-    header = pd.read_csv(PATH_IN, sep="\t", nrows=0).columns
-    cols_keep = [c for c in header if c == "kegg_id" or c not in METADATA_COLS]
+    df = pd.read_csv(PATH_IN, sep="\t", usecols=["kegg_id", "standardization"])
 
-    df = pd.read_csv(PATH_IN, sep="\t", usecols=cols_keep)
+    missing = {"kegg_id", "standardization"} - set(df.columns)
+    if missing:
+        raise KeyError(f"Column missing : {missing}")
 
-    if "kegg_id" not in df.columns:
-        raise KeyError(f"Column 'kegg_id' missing in {PATH_IN}")
+    df_ko = df.groupby("kegg_id", as_index=False)["standardization"].sum()
+    # 2. Round up to the next whole number and convert to an integer (int)
+    df_ko["standardization"] = np.ceil(df_ko["standardization"]).astype(int)
+    df_ko.to_csv(PATH_OUT, sep="\t", index=False)
 
-    df_out = df.groupby("kegg_id").sum(numeric_only=True).reset_index()
-    df_out.to_csv(PATH_OUT, sep="\t", index=False)
-
-    return len(df_out)
+    return len(df_ko)
 
 
 # --- Exécution ---
 if __name__ == "__main__":
+
     PATH_IN = snakemake.input.data
-    PATH_OUT = snakemake.output.deseq2
+    PATH_OUT = snakemake.output.agreg
 
     # Report
     sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))
-    process = sum_per_kegg(PATH_IN, PATH_OUT)
+    process = aggregate_by_ko(PATH_IN, PATH_OUT)
     if process:
         logging.info(
-            f"[KEGG_DESEQ2] SUCCESS | Sample: {sample_name} | "
+            f"[KEGG_AGGREGATION] SUCCESS | Sample: {sample_name} | "
             ""
             f"Count: {process} | Output: {PATH_OUT}"
         )
     else:
         logging.error(
-            f"[KEGG_DESEQ2] FAILED  | Sample: {sample_name} | Input: {PATH_IN}"
+            f"[KEGG_AGGREGATION] FAILED  | Sample: {sample_name} | Input: {PATH_IN}"
         )
 
         raise RuntimeError(f"Filtering failed for {sample_name}")

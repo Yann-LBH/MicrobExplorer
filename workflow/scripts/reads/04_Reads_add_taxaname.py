@@ -68,7 +68,7 @@ def enrich(
     PATH_IN["read_id"] = PATH_IN["read_id"].astype(str).str.strip()
     TAXONOMY["tax_id"] = TAXONOMY["tax_id"].astype(str).str.strip()
 
-    # ✅ STEP-BY-STEP FIX: Drop empty or null rows in keys to prevent cross-join explosions
+    # Drop empty or null rows in keys to prevent cross-join explosions
     PATH_IN = PATH_IN[PATH_IN["read_id"].notna() & (PATH_IN["read_id"] != "")]
     TAXONOMY = TAXONOMY[TAXONOMY["tax_id"].notna() & (TAXONOMY["tax_id"] != "")]
 
@@ -91,7 +91,7 @@ def enrich(
 
     for col in FINAL_COLS:
         if col not in df_others.columns:
-            df_others[col] = "Other"
+            df_others[col] = "Unclassified " + df_others["domain"]
 
     return pd.concat(
         [df_top[FINAL_COLS], df_others[FINAL_COLS]], ignore_index=True

@@ -13,7 +13,140 @@
 # ==========================================================================
 
 # ==========================================================================
-# DATA PATH
+# PIPELINE CONFIGURATION - Change these parameters to customize the pipeline
+# ==========================================================================
+
+language: "en" # english (en) or français (fr)
+
+# --- MODULES ACTIFS ---
+# Choose True/False
+
+run_taxonomy:     True
+run_reads:        True
+run_contigs:      True
+run_kegg:         True
+run_plots:        True
+run_deseq2:       True
+run_phyloseq:     True
+run_pca:          True
+run_physico:      True
+run_qc:           True
+
+# DATA TYPES CONFIGURATION
+
+datatypes:
+  phyloseq: ["reads","contigs","kegg"]
+  deseq2: ["contigs", "kegg"]
+  stackedbarplot:
+    standard:
+      pathway_relative: ["kegg"]
+      relative_by_sample: ["reads", "contigs"]
+      absolute_global: ["reads", "contigs"]
+    deseq2:    ["contigs", "kegg"]
+  heatmap: ["reads", "contigs", "kegg"]
+  volcano: ["contigs", "kegg"]
+  pca: ["reads", "contigs", "kegg"]
+  qc: ["reads", "contigs", "kegg"]
+
+
+# TREATEMENT PARAMETERS
+
+reads:
+  count_threshold: 10
+  top_n: 50
+  noise: 
+    - "root"
+    - "cellular organisms"
+    - "unclassified"
+    - "Bacteriophage sp."
+    - "Duplodnaviria"
+    - "environmental Halophage eHP-30"
+    - "Methanobacterium virus PhiF1"
+    - "Prokaryotic dsDNA virus sp."
+    - "Riboviria"
+    - "uncultured virus"
+    - "Virus NIOZ-UU157"
+    - "Viruses"
+
+contigs:
+  length_threshold: 3000
+  abundance_threshold: 100
+  rpkm_threshold: 0.5
+
+kegg:
+  pvalue_threshold : 0.05
+  lfc_threshold : 1.3
+
+
+# ANALYSIS PARAMETERS
+
+# DESeq2 contrasts to generate
+# Change this list to use only the contrasts you need
+deseq2:
+  contrast: ["ref", "date", "combo"]  # Options: "ref", "date", "combo"
+  ref: "TD1" # enter your key ref, it will use all sample with this key as ref
+
+
+# GRAPHIC PARAMETERS
+
+plots:
+# Global
+  shared:
+    theme: "theme_minimal"
+    palette: "turbo"
+    pdf_size: [10, 8] # [width, height]
+    title_size: 12
+    subtitle_size: 10
+    legend_size: 10
+    axes_size: 10
+    rank:
+      reads: "species" #eg : "phylum", class", "order", "family", "genus", "species"
+      contigs: "sepcies" #eg : "phylum", class", "order", "family", "genus", "species"
+      kegg: "level_3" #eg : "level_1", "level_2", "level_3", "gene_description"
+
+# Plots
+  barplot:
+    top_n: 19
+
+  stackedbarplot:
+    title: "{source} | Abundance of the top {top_n} {feature_type} in each sample"
+    subtitle: "Mode : {mode} | Metric: {stand_col} | {rank}"
+    top_n: 10
+
+  stackedbarplot_deseq2:
+    title: "{source} | Top {top_n} {feature_type} differentially abundant in {contrast}"
+    subtitle: "Pvalue threshold : {padj_threshold} | Log2 Fold Change threshold : {lfc_threshold} | {rank}"
+    top_n: 10
+    contrasts_values: # use the same order as your contrasts OPTIONS: "ref", "date", "combo"
+      padj_threshold : ["0.01", "0.001", "0.01"]
+      lfc_threshold : ["1.3", "1.3", "1.3"]
+
+  heatmap:
+    title: "{source} | Abundance of the top {top_n} taxons in sample {sample}"
+    subtitle: "Hierarchical clustering: {clust_method} | Distance metric: {distance_method} | {rank}"
+    top_n: 50
+    clust_method: "ward.D2" # Options: "ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid"
+    distance_method: "bray" # Options: "euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski"
+
+  pca:
+    title: "{source} | Principal Component Analysis (PCA) — {top_n} Most Variable Taxa"
+    subtitle: "Ordination based on CLR distance | DIMENSION {dim_x} vs DIMENSION {dim_y} | {rank}"
+    top_n: 10
+    dim_x: 1
+    dim_y: 2
+    physico_cols: "pH" # use any parameters from the physico_parameters file
+    point_size: 2
+
+  volcano:
+    title: "{source} | Top {top_n} Differential Abundance Volcano Plot in {contrast}"
+    subtitle: "Pvalue threshold : {padj_threshold} | Log2 Fold Change threshold : {lfc_threshold} | {rank}"
+    top_n: 10
+    contrasts_values: # use the same order as your contrasts OPTIONS: "ref", "date", "combo"
+      padj_threshold : ["0.01", "0.001", "0.01"]
+      lfc_threshold : ["1.3", "1.3", "1.3"]
+
+# ==========================================================================
+# DATA PATH - Do not modify
 # ==========================================================================
 samples_file: "config/samples.tsv"
 
@@ -40,141 +173,4 @@ output_path:
   parquet: "results/parquet/"
   qc: "results/qc/"
   audit: "results/audit/final_MicrobExplorer_audit.html"
-# ==========================================================================
-
-# ==========================================================================
-# PIPELINE CONFIGURATION
-# ==========================================================================
-
-# Run analysis and plots
-
-# --- Modules actifs ---
-run_taxonomy:     True
-run_reads:        True
-run_contigs:      True
-run_kegg:         True
-run_plots:        True
-run_deseq2:       True
-run_phyloseq:     True
-run_pca:          True
-run_physico:      True
-run_qc:           True
-
-# Data types used for each plot/analysis type
-
-datatypes:
-  phyloseq: ["reads","contigs","kegg"]
-  deseq2: ["contigs", "kegg"]
-  stackedbarplot:
-    standard:
-      pathway:   ["kegg"]
-      taxonomy:  ["reads", "contigs"]
-      organisms: ["reads", "contigs"]
-    deseq2:    ["contigs", "kegg"]
-  heatmap: ["reads", "contigs", "kegg"]
-  volcano: ["contigs", "kegg"]
-  pca: ["reads", "contigs", "kegg"]
-  qc: ["reads", "contigs", "kegg"]
-
-
-# General parameters
-
-# Analysis parameters
-
-# Abundance columns
-phyloseq:
-    reads: "cpm"
-    contigs: "rpkm"
-    kegg: "standardization"
-
-# DESeq2 contrasts to generate
-# Change this list to use only the contrasts you need
-deseq2:
-  contrasts: ["ref", "date", "combo"]  # Options: "ref", "date", "combo"
-  ref: "TD1" # enter your key ref, it will use all sample with this key as ref
-
-# Reads parameters
-reads:
-  count_threshold: 10
-  top_n: 50
-  noise: 
-    - "root"
-    - "cellular organisms"
-    - "unclassified"
-    - "Bacteriophage sp."
-    - "Duplodnaviria"
-    - "environmental Halophage eHP-30"
-    - "Methanobacterium virus PhiF1"
-    - "Prokaryotic dsDNA virus sp."
-    - "Riboviria"
-    - "uncultured virus"
-    - "Virus NIOZ-UU157"
-    - "Viruses"
-
-# Contigs parameters
-contigs:
-  length_threshold: 3000
-  abundance_threshold: 100
-  rpkm_threshold: 0.5
-
-# Kegg parameters
-kegg:
-  pvalue_threshold : 0.05
-  lfc_treshold : 1.3
-
-# Graphic parameters
-
-plots:
-# Global
-  shared:
-    theme: "theme_minimal"
-    palette: "turbo"
-    width: 10
-    height: 8
-    title:
-      size: 12
-    legend:
-      size: 10
-    axes:
-      size: 10
-
-# Plots
-  barplot:
-    top_n: 19
-    taxon_rank: "genus"
-
-  stackedbarplot:
-    title: "Top 10 taxons differentially abundant"
-    subtitle: "DESeq2 results"
-    top_n: 10
-    target_rank: "genus"
-    taxon_rank: "genus" #eg : "phylum", class", "order", "family", "genus", "species"
-    pathway_level: "level_3" #eg : "level_1", "level_2", "level_3", "gene_description"
-
-  pca:
-    color_by: "condition"
-    point_size: 2
-    top_n: 10
-    dim_x: 1
-    dim_y: 2
-    physico_cols: "pH" # use any parameters from the physico_parameters file
-    rank:
-      reads: "species"
-      contigs: "genus"
-      kegg: "level_3"
-
-  heatmap:
-    top_n: 50
-    taxon_rank:
-      reads: "species"
-      contigs: "genus"
-      kegg: "level_3"
-    color_opt: "turbo"
-    clust_method: "ward.D2" # Options: "ward.D", "ward.D2", "single", "complete", "average", "mcquitty", "median", "centroid"
-    distance_method: "bray" # Options: "euclidean", "maximum", "manhattan", "canberra", "binary", "minkowski"
-
-  volcano:
-    pvalue_threshold : 0.05
-    lfc_treshold : 1.3
-    top_n: 10
 # ==========================================================================

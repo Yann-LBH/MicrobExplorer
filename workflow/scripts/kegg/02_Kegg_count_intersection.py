@@ -20,7 +20,7 @@ logging.basicConfig(
 
 def intersection_kegg(PATH_IN: str, COUNTS: str, PATH_OUT: str) -> int:
     """
-    Inner join between KEGG annotations and the counts for a sample.
+    Inner join between KEGG annotations and the contigs counts for a sample.
     Returns the number of rows in the intersection.
     """
     df_kegg = pd.read_csv(PATH_IN, sep="\t")

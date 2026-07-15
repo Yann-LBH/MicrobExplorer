@@ -6,6 +6,7 @@
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
+# Libraries CRAN
 library(data.table)
 library(ggplot2)
 library(arrow)
@@ -17,6 +18,7 @@ library(factoextra)
 library(compositions)
 library(missMDA)
 library(vegan)
+library(glue)
 
 # ==========================================================================
 # Configuration (Snakemake)
@@ -32,36 +34,29 @@ PDF <- as.character(snakemake@output[["pdf"]])[1]
 PARQUET <- as.character(snakemake@output[["parquet"]])[1]
 XLSX <- as.character(snakemake@output[["xlsx"]])[1]
 
+# Shared plots features
+SHARED      <- snakemake@params[["shared"]]
+THEME       <- as.character(SHARED$theme) %||% "theme_minimal"
+PDF_SIZE    <- as.numeric(SHARED$pdf_size) %||% c(10, 8)
+TITLE_SIZE  <- as.integer(SHARED$title_size) %||% 12
+SUBTITLE_SIZE <- as.integer(SHARED$subtitle_size) %||% 10
+LEGEND_SIZE <- as.integer(SHARED$legend_size) %||% 10
+AXES_SIZE   <- as.integer(SHARED$axes_size) %||% 10
+RANK        <- tolower(as.character(snakemake@params[["rank"]])[1])
+
 # Parameters
-SHARED <- snakemake@params[["shared"]]
-TOP_N <- as.integer(snakemake@params[["top_n"]])[1]
-POINT_SIZE <- as.numeric(snakemake@params[["point_size"]])[1]
-DIM_X <- as.integer(snakemake@params[["dim_x"]])[1]
-DIM_Y <- as.integer(snakemake@params[["dim_y"]])[1]
-PHYSICO_COLS <- as.character(snakemake@params[["physico_cols"]])[1]
-RANK <- as.character(snakemake@params[["rank"]])[1]
-
-# Wildcards
-SOURCE <- as.character(snakemake@wildcards[["source"]])
-
-# --- Extraction et Conversion Type par Type ---
-
-# 1. Les Textes (Character)
-THEME   <- as.character(SHARED$theme %||% "theme_minimal")
-PALETTE <- as.character(SHARED$palette %||% "Turbo")
-
-# 2. Les Nombres Décimaux (Numeric / Double)
-# Utile pour les dimensions des plots car on peut vouloir 8.5 ou 10.2
-WIDTH  <- as.numeric(SHARED$width %||% 10)
-HEIGHT <- as.numeric(SHARED$height %||% 8)
-
-# 3. Les Tailles de Police / Nombres Entiers (Integer)
-# Les tailles de texte sont généralement des entiers
-TITLE_SIZE  <- as.integer(SHARED$title$size %||% 12)
-LEGEND_SIZE <- as.integer(SHARED$legend$size %||% 10)
-AXES_SIZE   <- as.integer(SHARED$axes$size %||% 10)
+TITLE_TEMPLATE    <- as.character(snakemake@params[["title"]])[1] %||% "Principal Component Analysis (PCA) — {top_n} Most Variable Taxa - {rank}"
+SUBTITLE_TEMPLATE <- as.character(snakemake@params[["subtitle"]])[1] %||% "Ordination based on CLR distance | DIMENSION {dim_x} vs DIMENSION {dim_y}"
+TOP_N             <- as.integer(snakemake@params[["top_n"]])[1]
+POINT_SIZE        <- as.numeric(snakemake@params[["point_size"]])[1]
+DIM_X             <- as.integer(snakemake@params[["dim_x"]])[1]
+DIM_Y             <- as.integer(snakemake@params[["dim_y"]])[1]
+PHYSICO_COLS      <- as.character(snakemake@params[["physico_cols"]])
 
 dim_names <- paste0("Dim.", c(DIM_X, DIM_Y))
+
+# Wildcards
+SOURCE <- tolower(as.character(snakemake@wildcards[["source"]]))[1]
 
 # ==========================================================================
 # 1. Data Import
@@ -86,7 +81,7 @@ if (grepl("read", SOURCE, ignore.case = TRUE)) {
   ID_COL <- "contig_id"
   NAME_COL      <- if (RANK != "") RANK else "contig_id"
   ABUNDANCE_COL <- "rpkm"
-}  else {
+} else {
   ID_COL <- "ko"
   NAME_COL      <- if (RANK != "") RANK else "gene_description"
   ABUNDANCE_COL <- "adj_standardization"
@@ -207,12 +202,41 @@ selection_finale <- c(top_taxons, PHYSICO_COLS)
 # 6. Graphics Generation
 # ==========================================================================
 n_dates <- nlevels(metadata$date)
-n_digesteurs <- nlevels(metadata$name)
+n_samples <- nlevels(metadata$name)
 
-palette_digesteurs <- c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00", "#FFC0CB")
-formes_dates <- c(16, 17, 15, 18, 8)
+color_blind_friendly_base <- c(
+  "#E69F00", # Orange
+  "#56B4E9", # Sky Blue
+  "#009E73", # Bluish Green
+  "#F0E442", # Yellow
+  "#0072B2", # Blue
+  "#D55E00", # Vermilion
+  "#CC79A7", # Reddish Purple
+  "#000000"  # Black
+)
 
-plot_variance <- fviz_eig(res_pca, addlabels = TRUE)
+if (n_samples <= length(color_blind_friendly_base)) {
+  palette_samples <- color_blind_friendly_base[seq_len(n_samples)]
+} else {
+
+  # Generating equidistant colors in the HCL color space (qualitative)
+  palette_samples <- grDevices::hcl.colors(n_samples, palette = "Qualitative")
+}
+
+base_shapes <- c(16, 17, 15, 18, 8, 1, 2, 0, 5, 6, 9, 10, 12, 13, 14)
+if (n_dates <= length(base_shapes)) {
+  shapes_dates <- base_shapes[seq_len(n_dates)]
+} else {
+  # Sécurité : si tu as énormément de dates, on recycle les formes pour éviter un crash
+  shapes_dates <- rep(base_shapes, length.out = n_dates)
+}
+
+resolved_title <- glue(TITLE_TEMPLATE, source=toupper(SOURCE), top_n = TOP_N)
+resolved_subtitle <- glue(SUBTITLE_TEMPLATE, dim_x=DIM_X, dim_y=DIM_Y, rank=RANK)
+
+plot_variance <- fviz_eig(res_pca, addlabels = TRUE) + 
+  get(THEME)() +
+  theme(plot.title = element_text(size = TITLE_SIZE))
 
 plot_acp <- fviz_pca_biplot(
   res_pca,
@@ -224,7 +248,8 @@ plot_acp <- fviz_pca_biplot(
   habillage = idx_quali_sup,
   mean.point = FALSE,
   repel = TRUE,
-  title = sprintf("PCA CLR (%s) - Top %d features (Dim %d vs %d)", toupper(SOURCE), TOP_N, DIM_X, DIM_Y)
+  title = resolved_title,
+  subtitle = resolved_subtitle
 ) +
   geom_point(
     data = as.data.frame(res_pca$ind$coord),
@@ -237,18 +262,23 @@ plot_acp <- fviz_pca_biplot(
     size = POINT_SIZE, alpha = 0.8
   ) +
   scale_shape_manual(
-    values = formes_dates[seq_len(n_dates)],
+    values = shapes_dates[seq_len(n_dates)],
     name = "Dates",
     labels = levels(metadata$date)
   ) +
   scale_color_manual(
-    values = palette_digesteurs[seq_len(n_digesteurs)],
-    name = "Digesteurs",
+    values = palette_samples[seq_len(n_samples)],
+    name = "Samples",
     labels = levels(metadata$name)
   ) +
   labs(x = paste("Dimension", DIM_X), y = paste("Dimension", DIM_Y)) +
-  theme_minimal() +
-  theme(legend.position = "right")
+  get(THEME)() +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = TITLE_SIZE, face = "bold"),
+    plot.subtitle = element_text(size = SUBTITLE_SIZE),
+    legend.text = element_text(size = LEGEND_SIZE),
+  )
 
 plot_acp$layers <- rev(plot_acp$layers)
 
@@ -259,7 +289,7 @@ contrib_top <- as.data.table(res_pca$var$contrib[top_taxons, ],
 # ==========================================================================
 # 7. Outputs and File Generation
 # ==========================================================================
-pdf(PDF, width = 10, height = 8)
+pdf(PDF, width = PDF_SIZE[1], height = PDF_SIZE[2])
 print(plot_variance)
 print(plot_acp)
 
@@ -274,7 +304,6 @@ coords_ind[, (PHYSICO_COLS) := physico_complet]
 
 write_parquet(coords_ind, PARQUET)
 
-dir.create(dirname(XLSX), recursive = TRUE, showWarnings = FALSE)
 write_xlsx(contrib_top, XLSX)
 
 message("✓ PDF       : ", PDF)

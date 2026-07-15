@@ -15,12 +15,17 @@
 # Snakemake configuration
 # ==========================================================================
 
-# All script comments are provided in English as requested.
+# Libraries CRAN
 library(data.table)
 library(readxl)
 library(ggplot2)
 library(rlang)
 library(arrow)
+library(glue)
+
+# ==========================================================================
+# Configuration Snakemake
+# ==========================================================================
 
 # Inputs
 DATA     <- as.character(snakemake@input[["data"]])
@@ -30,282 +35,179 @@ METADATA <- as.character(snakemake@input[["metadata"]])[1]
 PDF     <- as.character(snakemake@output[["pdf"]])[1]
 PARQUET <- as.character(snakemake@output[["parquet"]])[1]
 
+# Shared plots features
+SHARED      <- snakemake@params[["shared"]]
+THEME       <- as.character(SHARED$theme) %||% "theme_minimal"
+PALETTE     <- as.character(SHARED$palette) %||% "turbo"
+PDF_SIZE    <- as.numeric(SHARED$pdf_size) %||% c(12, 8)
+TITLE_SIZE  <- as.integer(SHARED$title_size) %||% 14
+SUBTITLE_SIZE <- as.integer(SHARED$subtitle_size) %||% 10
+LEGEND_SIZE <- as.integer(SHARED$legend_size) %||% 10
+AXES_SIZE   <- as.integer(SHARED$axes_size) %||% 10
+
 # Parameters
-MODE          <- as.character(snakemake@params[["mode"]])[1]
-TOP_N         <- as.integer(snakemake@params[["top_n"]])[1]
-VALUE_COL     <- tolower(as.character(snakemake@params[["value_col"]])[1])
-TARGET_RANK   <- tolower(as.character(snakemake@params[["target_rank"]])[1]) %||% "genus"
-TAXON_RANK    <- tolower(as.character(snakemake@params[["taxon_rank"]])[1]) %||% "genus"
-PATHWAY_LEVEL <- as.character(snakemake@params[["pathway_level"]])[1]
+TITLE_TEMPLATE    <- as.character(snakemake@params[["title"]])[1] %||% "{source} | Abundance of the top {top_n} {feature_type} in each sample"
+SUBTITLE_TEMPLATE <- as.character(snakemake@params[["subtitle"]])[1] %||% "Mode : {mode} | Metric: {stand_col} | {rank}"
+MODE              <- as.character(snakemake@params[["mode"]])[1]
+TOP_N             <- as.integer(snakemake@params[["top_n"]])[1] %||% 10
+STAND_COL         <- tolower(as.character(snakemake@params[["stand_col"]])[1])
+RANK              <- as.character(snakemake@params[["rank"]])[1]
 
-# ✅ FIXED: Define TAX_RANKS globally so it is accessible in all modes
-TAX_RANKS     <- c("domain", "kingdom", "phylum", "class", "order", "family", "genus", "species")
+# Wildcards
+SOURCE <- tolower(as.character(snakemake@wildcards[["source"]]))[1]
 
-# ==========================================================================
-# Helpers
-# ==========================================================================
+# Standardization of Structure Type
+FEATURE_TYPE <- if (SOURCE == "kegg") "pathways" else "taxon"
 
-# Build turbo palette: top categories in colour, "Others" in black
-make_palette <- function(categories) {
+# TITRES ET SUBTITLES UNIFIÉS
+RESOLVED_TITLE    <- glue(TITLE_TEMPLATE, source = toupper(SOURCE), top_n = TOP_N, feature_type = FEATURE_TYPE)
+RESOLVED_SUBTITLE <- glue(SUBTITLE_TEMPLATE, mode = MODE, stand_col = toupper(STAND_COL), rank = RANK)
+
+color_palette <- function(categories) {
   top_cats <- sort(setdiff(categories, "Others"))
   lvl_order <- c(top_cats, "Others")
-  colours <- c(viridisLite::viridis(length(top_cats), option = "turbo"), "#000000")
+  colours <- c(viridisLite::viridis(length(top_cats), option = tolower(PALETTE)), "#000000")
   names(colours) <- lvl_order
   list(colours = colours, levels = lvl_order)
 }
 
-# Stacked bar ggplot
+# Stacked bar universel (Gère les facettes si demandées)
 stacked_bar <- function(dt, x_col, y_col, fill_col, colours, title, subtitle,
-                        x_lab, y_lab, fill_lab) {
-  ggplot(dt, aes(x = as.factor(get(x_col)), y = get(y_col), fill = get(fill_col))) +
+                        x_lab, y_lab, fill_lab, facet_col = NULL) {
+  theme_function <- match.fun(THEME)
+  p <- ggplot(dt, aes(x = as.factor(get(x_col)), y = get(y_col), fill = get(fill_col))) +
     geom_bar(
       stat = "identity",
       position = position_stack(reverse = TRUE),
       colour = "white",
       linewidth = 0.05
     ) +
-    scale_fill_manual(values = colours) +
-    labs(
-      title = title, subtitle = subtitle,
-      x = x_lab, y = y_lab, fill = fill_lab
-    ) +
-    theme_minimal() +
+    labs(title = title, subtitle = subtitle, x = x_lab, y = y_lab, fill = fill_lab) +
+    theme_function() +
     theme(
+      plot.title = element_text(size = TITLE_SIZE, face = "bold"),
+      plot.subtitle = element_text(size = SUBTITLE_SIZE, face = "italic"),
       axis.text.x = element_text(angle = 45, hjust = 1),
-      legend.text = element_text(size = 7),
+      legend.text = element_text(size = LEGEND_SIZE - 2),
       panel.grid.major.x = element_blank()
     )
+  
+  # Si on passe un nom de couleur customisé ou généré
+  if (is.list(colours)) colours <- colours$colours
+  p <- p + scale_fill_manual(values = colours)
+  
+  # Ajout dynamique des facettes (Utilisé dans le mode Reads)
+  if (!is.null(facet_col)) {
+    p <- p + facet_wrap(as.formula(paste0("~", facet_col)), scales = "free_x") +
+      theme(strip.text = element_text(face = "bold", size = 12), panel.spacing = unit(1, "lines"))
+  }
+  return(p)
 }
 
-# ==========================================================================
-# Load helpers — shared across modes
-# ==========================================================================
-
 load_tsv_dir_dynamic <- function(paths, meta_dt, select_cols = NULL) {
-  rbindlist(
-    lapply(paths, function(f) {
-      file_name <- basename(f)
-      matched_sample <- meta_dt[sapply(sample_id, function(sid) grepl(sid, file_name)), sample_id]
-      
-      if (length(matched_sample) == 0 || is.na(matched_sample)) return(NULL)
-      
-      dt <- if (is.null(select_cols)) {
-        fread(f, showProgress = FALSE)
-      } else {
-        actual_cols <- intersect(select_cols, names(fread(f, nrows = 0)))
-        fread(f, select = actual_cols, showProgress = FALSE)
-      }
-      
-      if (nrow(dt) == 0) return(NULL)
-      
-      dt[, sample_id := matched_sample]
-      dt
-    }),
-    use.names = TRUE, fill = TRUE
-  )
+  rbindlist(lapply(paths, function(f) {
+    file_name <- basename(f)
+    matched_sample <- meta_dt[sapply(sample_id, function(sid) grepl(sid, file_name)), sample_id]
+    if (length(matched_sample) == 0 || is.na(matched_sample)) return(NULL)
+    dt <- if (is.null(select_cols)) fread(f) else fread(f, select = intersect(select_cols, names(fread(f, nrows = 0))))
+    if (nrow(dt) == 0) return(NULL)
+    dt[, sample_id := matched_sample]
+  }), use.names = TRUE, fill = TRUE)
 }
 
 load_metadata <- function(path) {
-  ext <- tolower(tools::file_ext(path))
-  dt  <- if (ext %in% c("xlsx", "xls")) as.data.table(readxl::read_excel(path)) else fread(path)
-  dt[, sample_id := as.character(sample_id)]
-  dt[, name      := as.character(name)]
-  dt[, date      := as.character(date)]
-  dt
+  dt <- if (tolower(tools::file_ext(path)) %in% c("xlsx", "xls")) as.data.table(readxl::read_excel(path)) else fread(path)
+  dt[, c("sample_id", "name", "date") := .(as.character(sample_id), as.character(name), as.character(date))]
 }
 
 # ==========================================================================
-# MODE: Kegg
+# RUN MODES
 # ==========================================================================
-run_kegg <- function() {
+
+run_pathway_relative <- function(title = RESOLVED_TITLE, subtitle = RESOLVED_SUBTITLE) {
+  target_col <- STAND_COL
+  if (is.na(target_col) || target_col == "") stop("L'argument 'stand_col' est manquant ou égal à NA.")
+
   meta <- load_metadata(METADATA)
-  all_data <- load_tsv_dir_dynamic(DATA, meta, select_cols = c(PATHWAY_LEVEL, VALUE_COL))
+  all_data <- load_tsv_dir_dynamic(DATA, meta, select_cols = c(RANK, target_col))
+  write_parquet(all_data[meta, on = "sample_id", nomatch = 0L], PARQUET)
 
-  setkey(all_data, sample_id)
-  setkey(meta, sample_id)
-  all_data <- all_data[meta, nomatch = 0L]
-
-  write_parquet(all_data, PARQUET)
-
-  agg <- all_data[, .(total = sum(get(VALUE_COL), na.rm = TRUE)),
-    by = .(name, date, get(PATHWAY_LEVEL))
-  ]
-  setnames(agg, "get", PATHWAY_LEVEL)
-
-  agg[, category := {
-    r <- frank(-total, ties.method = "random")
-    fifelse(r <= TOP_N, as.character(get(PATHWAY_LEVEL)), "Others")
-  }, by = .(name, date)]
-
-  final_dt <- agg[, .(sum_val = sum(total)), by = .(name, date, category)]
-  final_dt[, pct := (sum_val / sum(sum_val)) * 100, by = .(name, date)]
-
-  pal <- make_palette(unique(final_dt$category))
+  agg <- all_data[meta, on = "sample_id", nomatch = 0L][, .(total = sum(get(target_col), na.rm = TRUE)), by = .(name, date, get(RANK))]
+  setnames(agg, "get", RANK)
+  agg[, category := fifelse(frank(-total, ties.method = "random") <= TOP_N, as.character(get(RANK)), "Others"), by = .(name, date)]
+  
+  final_dt <- agg[, .(sum_val = sum(total)), by = .(name, date, category)][, pct := (sum_val / sum(sum_val)) * 100, by = .(name, date)]
+  pal <- color_palette(unique(final_dt$category))
   final_dt[, category := factor(category, levels = pal$levels)]
 
-  pdf(PDF, width = 12, height = 8)
-  lapply(split(final_dt, by = "name", keep.by = TRUE), function(df_cond) {
-    print(stacked_bar(df_cond, "date", "pct", "category",
-      pal$colours,
-      title = paste("Condition:", df_cond$name[1L]),
-      subtitle = paste("Top", TOP_N, "abundance pathways"),
-      x_lab = "Date", y_lab = "Relative Abundance (%)",
-      fill_lab = "Pathways"
-    ))
+  pdf(PDF, width = PDF_SIZE[1], height = PDF_SIZE[2])
+  lapply(split(final_dt, by = "name"), function(df_cond) {
+    # Using dynamic title matching the exact sample name
+    print(stacked_bar(df_cond, "date", "pct", "category", pal, title, subtitle, "Date", "Relative Abundance (%)", "Pathways"))
   })
   dev.off()
 }
 
-# ==========================================================================
-# MODE: Contigs
-# ==========================================================================
-run_contigs <- function() {
-  meta   <- load_metadata(METADATA)
-  dt_all <- load_tsv_dir_dynamic(DATA, meta)
-  
-  setkey(dt_all, sample_id)
-  setkey(meta, sample_id)
-  dt_taxo <- meta[dt_all, nomatch = 0L]
-  
+run_relative_by_sample <- function(title = RESOLVED_TITLE, subtitle = RESOLVED_SUBTITLE) {
+  target_col <- STAND_COL
+  if (is.na(target_col) || target_col == "") stop("L'argument 'stand_col' est manquant ou égal à NA.")
+
+  meta <- load_metadata(METADATA)
+  dt_taxo <- load_tsv_dir_dynamic(DATA, meta)[meta, on = "sample_id", nomatch = 0L]
   write_parquet(dt_taxo, PARQUET)
 
-  setnames(dt_taxo, TARGET_RANK, "Taxon")
-
-  agg <- dt_taxo[, .(RPKM_Sum = sum(get(VALUE_COL), na.rm = TRUE)),
-    by = .(name, date, Taxon)
-  ]
-  agg[, Abund_Pct := (RPKM_Sum / sum(RPKM_Sum)) * 100, by = .(name, date)]
-
-  top_taxa <- agg[, .(G = sum(RPKM_Sum)), by = Taxon][
-    order(-G)[seq_len(min(TOP_N, .N))], Taxon
-  ]
-
+  setnames(dt_taxo, RANK, "Taxon")
+  agg <- dt_taxo[, .(Abund_Sum = sum(get(target_col), na.rm = TRUE)), by = .(name, date, Taxon)][, Abund_Pct := (Abund_Sum / sum(Abund_Sum)) * 100, by = .(name, date)]
+  top_taxa <- agg[, .(G = sum(Abund_Sum)), by = Taxon][order(-G)[seq_len(min(TOP_N, .N))], Taxon]
   agg[, Taxon_Final := fifelse(Taxon %in% top_taxa, Taxon, "Others")]
+  final_dt <- agg[, .(Abund_Pct = sum(Abund_Pct)), by = .(name, date, Taxon_Final)]
 
-  final_dt <- agg[, .(Abund_Pct = sum(Abund_Pct)),
-    by = .(name, date, Taxon_Final)
-  ]
-
-  pdf(PDF, width = 12, height = 8)
-  
-  lapply(unique(final_dt$name), function(r) {
-    plot_dt <- final_dt[name == r]
-    if (!nrow(plot_dt)) {
-      return(invisible(NULL))
-    }
-
-    taxon_order <- c(
-      setdiff(plot_dt[, .(t = sum(Abund_Pct)), by = Taxon_Final][order(-t), Taxon_Final], "Others"),
-      "Others"
-    )
-    plot_dt[, Taxon_Final := factor(Taxon_Final, levels = taxon_order)]
-    setorder(plot_dt, date)
-
-    pal <- setNames(
-      c(viridisLite::viridis(length(taxon_order) - 1L, option = "turbo"), "#000000"),
-      taxon_order
-    )
-
-    print(stacked_bar(plot_dt, "date", "Abund_Pct", "Taxon_Final",
-      pal,
-      title = paste("Abundance:", TARGET_RANK, "| Digesteur", r),
-      subtitle = NULL,
-      x_lab = "Date", y_lab = "Relative Abundance (%)",
-      fill_lab = TARGET_RANK
-    ))
+  pdf(PDF, width = PDF_SIZE[1], height = PDF_SIZE[2])
+  # Harmonized: loop using split() instead of unique() + manual filtering
+  lapply(split(final_dt, by = "name"), function(df_cond) {
+    pal <- color_palette(unique(df_cond$Taxon_Final))
+    df_cond[, Taxon_Final := factor(Taxon_Final, levels = pal$levels)]
+    # Standardized title structure to match the sample view
+    print(stacked_bar(df_cond, "date", "Abund_Pct", "Taxon_Final", pal, title, subtitle, "Date", "Relative Abundance (%)", RANK))
   })
-  
   dev.off()
 }
 
-# ==========================================================================
-# MODE: Reads
-# ==========================================================================
-run_reads <- function() {
+run_absolute_global <- function(title = RESOLVED_TITLE, subtitle = RESOLVED_SUBTITLE) {
+  target_col <- STAND_COL
+  if (is.na(target_col) || target_col == "") stop("L'argument 'stand_col' est manquant ou égal à NA.")
+
   meta <- load_metadata(METADATA)
-  dt   <- load_tsv_dir_dynamic(DATA, meta)
-
-  if (!TAXON_RANK %in% names(dt)) {
-    stop(sprintf("The taxonomy column [%s] is missing from the input file.", TAXON_RANK))
-  }
-
-  dt[get(TAXON_RANK) == "" | get(TAXON_RANK) == " " | is.na(get(TAXON_RANK)), (TAXON_RANK) := "Unclassified"]
-
-  setkey(dt, sample_id)
-  setkey(meta, sample_id)
-  dt <- meta[dt, nomatch = 0L]
-
+  dt <- load_tsv_dir_dynamic(DATA, meta)[meta, on = "sample_id", nomatch = 0L]
+  if (!RANK %in% names(dt)) stop(sprintf("The taxonomy column [%s] is missing.", RANK))
+  dt[get(RANK) == "" | is.na(get(RANK)), (RANK) := "Unclassified"]
   write_parquet(dt, PARQUET)
 
-  # Standardized dynamic column extraction with data.table evaluating via character vector
-  taxa_config_global <- dt[, .(Global_RPKM = sum(get(VALUE_COL), na.rm = TRUE)), by = c(TAXON_RANK)]
-  setorder(taxa_config_global, -Global_RPKM)
-  
-  # Use standard vector indexing to prevent length/evaluation issues
-  top_genera <- taxa_config_global[seq_len(min(TOP_N, .N))][[TAXON_RANK]]
+  taxa_config_global <- dt[, .(Global_Abund = sum(get(target_col), na.rm = TRUE)), by = c(RANK)][order(-Global_Abund)]
+  top_genera <- taxa_config_global[seq_len(min(TOP_N, .N))][[RANK]]
 
-  # --- Plot 1: global horizontal bar ---
-  plot1_dt <- taxa_config_global[, .(
-    Taxa_Grouped = fifelse(get(TAXON_RANK) %in% top_genera, get(TAXON_RANK), "Others"),
-    Global_RPKM
-  )][, .(Total_RPKM = sum(Global_RPKM)), by = Taxa_Grouped]
-  setorder(plot1_dt, Total_RPKM)
+  # --- Plot 1: Global horizontal bar ---
+  plot1_dt <- taxa_config_global[, .(Taxa_Grouped = fifelse(get(RANK) %in% top_genera, get(RANK), "Others"), Global_Abund)][, .(Total_Abund = sum(Global_Abund)), by = Taxa_Grouped][order(Total_Abund)]
   plot1_dt[, Taxa_Grouped := factor(Taxa_Grouped, levels = Taxa_Grouped)]
-
-  p_global <- ggplot(
-    plot1_dt,
-    aes(x = Total_RPKM, y = Taxa_Grouped, fill = Taxa_Grouped)
-  ) +
-    geom_col(show.legend = FALSE) +
-    scale_fill_viridis_d(option = "turbo") +
-    labs(
-      title = sprintf("Global Abundance — Top %d %ss", TOP_N, TAXON_RANK),
-      subtitle = "Aggregated data from all matched samples",
-      x = paste("Total", VALUE_COL, "(Summed)"), y = TAXON_RANK
-    ) +
-    theme_minimal() +
-    theme(
-      axis.text.y = element_text(size = 10, face = "italic"),
-      plot.title = element_text(face = "bold", size = 14)
-    )
-
-  # --- Plot 2: stacked per sample name × date ---
-  # ✅ FIXED: Force evaluation context using character vector syntax
-  plot2_dt <- dt[!is.na(name) & !is.na(date),
-    .(Total_RPKM = sum(get(VALUE_COL), na.rm = TRUE)),
-    by = c("name", "date", TAXON_RANK)
-  ]
   
-  plot2_dt[, Taxa_Grouped := fifelse(get(TAXON_RANK) %in% top_genera, get(TAXON_RANK), "Others")]
-  plot2_dt <- plot2_dt[, .(Total_RPKM = sum(Total_RPKM)), by = .(name, date, Taxa_Grouped)]
-  setorder(plot2_dt, Total_RPKM)
-  plot2_dt[, Taxa_Grouped := factor(Taxa_Grouped, levels = unique(Taxa_Grouped))]
+  p_global <- ggplot(plot1_dt, aes(x = Total_Abund, y = Taxa_Grouped, fill = Taxa_Grouped)) +
+    geom_col(show.legend = FALSE) + get(THEME)() + theme(plot.title = element_text(face = "bold", size = TITLE_SIZE), axis.text.y = element_text(size = AXES_SIZE, face = "italic")) +
+    # Now explicitly uses the title variable passed to the function
+    labs(title = title, subtitle = subtitle, x = paste("Total", toupper(target_col)), y = RANK) +
+    scale_fill_manual(values = color_palette(unique(plot1_dt$Taxa_Grouped))$colours)
 
-  p_stacked <- ggplot(
-    plot2_dt,
-    aes(x = as.factor(date), y = Total_RPKM, fill = Taxa_Grouped)
-  ) +
-    geom_col(colour = "white", linewidth = 0.1) +
-    scale_fill_viridis_d(option = "turbo") +
-    facet_wrap(~name, scales = "free_x") +
-    labs(
-      title = sprintf("Composition of Bacterial %ss", TAXON_RANK),
-      subtitle = paste("Vertical stacked bars |", VALUE_COL, "values"),
-      x = "Sampling Date", y = VALUE_COL, fill = TAXON_RANK
-    ) +
-    theme_minimal() +
-    theme(
-      axis.text.x = element_text(angle = 45, hjust = 1),
-      legend.text = element_text(size = 9, face = "italic"),
-      legend.title = element_text(face = "bold"),
-      strip.text = element_text(face = "bold", size = 12),
-      panel.spacing = unit(1, "lines"),
-      plot.title = element_text(face = "bold", size = 16)
-    )
+  # --- Plot 2: Utilisation propre du Helper stacked_bar avec facettes ! ---
+  plot2_dt <- dt[!is.na(name) & !is.na(date), .(Total_Abund = sum(get(target_col), na.rm = TRUE)), by = c("name", "date", RANK)]
+  plot2_dt[, Taxa_Grouped := fifelse(get(RANK) %in% top_genera, get(RANK), "Others")]
+  plot2_dt <- plot2_dt[, .(Total_Abund = sum(Total_Abund)), by = .(name, date, Taxa_Grouped)]
+  pal_stacked <- color_palette(unique(plot2_dt$Taxa_Grouped))
+  plot2_dt[, Taxa_Grouped := factor(Taxa_Grouped, levels = pal_stacked$levels)]
 
-  pdf(PDF, width = 14, height = 8)
-  print(p_global)
-  print(p_stacked)
+  # Passed title and subtitle variables safely downstream
+  p_stacked <- stacked_bar(plot2_dt, "date", "Total_Abund", "Taxa_Grouped", pal_stacked, title, subtitle, "Sampling Date", "Abundance", RANK, facet_col = "name")
+
+  pdf(PDF, width = PDF_SIZE[1], height = PDF_SIZE[2])
+  print(p_global); print(p_stacked)
   dev.off()
 }
 
@@ -313,10 +215,10 @@ run_reads <- function() {
 # Dispatch
 # ==========================================================================
 switch(MODE,
-  pathway   = run_kegg(),
-  taxonomy  = run_contigs(),
-  organisms = run_reads(),
-  stop("Unknown mode: ", MODE, ". Use 'kegg', 'contigs', or 'reads'.")
+  "pathway_relative" = run_pathway_relative(),
+  "relative_by_sample" = run_relative_by_sample(),
+  "absolute_global" = run_absolute_global(),
+  stop("Unknown mode: ", MODE)
 )
 
 message("✓ Execution completed. Output written to ", PDF, " and ", PARQUET)

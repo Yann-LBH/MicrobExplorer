@@ -21,7 +21,7 @@ METADATA <- as.character(snakemake@input[["metadata"]])[1]
 RDS      <- as.character(snakemake@output[["rds"]])[1]
 
 # Paramètres (avec valeurs par défaut au cas où)
-VALUE_COL <- tolower(as.character(snakemake@params[["value_col"]]))[1]
+STAND_COL <- tolower(as.character(snakemake@params[["stand_col"]]))[1]
 
 # ==========================================================================
 # 1. Chargement des métadonnées et des fichiers TSV
@@ -68,8 +68,8 @@ if ("cpm" %in% names(all_data)) {
 if (is.na(id_col) || !id_col %in% names(all_data)) {
   stop("Error: The dynamic ID column could not be resolved or is missing from data.")
 }
-if (!VALUE_COL %in% names(all_data)) {
-  stop(sprintf("Error: The abundance column [%s] does not exist in these files.", VALUE_COL))
+if (!STAND_COL %in% names(all_data)) {
+  stop(sprintf("Error: The abundance column [%s] does not exist in these files.", STAND_COL))
 }
 
 # Format IDs as character and clean missing values
@@ -83,7 +83,7 @@ all_data <- all_data[!is.na(get(id_col)) & get(id_col) != "" & get(id_col) != "N
 # --- A. OTU TABLE ---
 # fun.aggregate = sum handles multiple identical KOs per sample perfectly
 formula_str <- as.formula(paste(id_col, "~ sample_id"))
-otu_dt <- dcast(all_data, formula_str, value.var = VALUE_COL, fun.aggregate = sum, fill = 0)
+otu_dt <- dcast(all_data, formula_str, value.var = STAND_COL, fun.aggregate = sum, fill = 0)
 
 otu_mat <- as.matrix(otu_dt, rownames = id_col)
 mode(otu_mat) <- "numeric"
