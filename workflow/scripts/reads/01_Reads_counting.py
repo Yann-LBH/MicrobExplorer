@@ -8,6 +8,7 @@
 
 import os
 import logging
+import pandas as pd
 
 # Configure logging to display time, level, and message properly
 logging.basicConfig(
@@ -17,40 +18,41 @@ logging.basicConfig(
 )
 
 
-def kaiju_analyze(PATH_IN, PATH_OUT):
-    counter = {}
+def kaiju_analyze(PATH_IN: str, PATH_OUT: str) -> bool:
+    """Parses raw Kaiju output, filters classified reads, and counts taxon occurrences."""
+    try:
+        df = pd.read_csv(
+            PATH_IN,
+            sep="\t",
+            header=None,
+            usecols=[0, 2],
+            names=["status", "taxon_id"],
+            dtype={"status": str, "taxon_id": str},
+        )
 
-    with open(PATH_IN, "r", encoding="utf-8") as f:
-        for line in f:
-            # Kaiju generally separates columns by tabs
-            column = line.strip().split("\t")
+        # Filtering ('C')
+        df_classified = df[df["status"] == "C"]
 
-            # Check if line is classified ('C') and has a taxon ID
-            if len(column) >= 3 and column[0] == "C":
-                taxon_id = column[2]  # 3rd column (e.g., 35786)
+        if not df_classified.empty:
+            counts = df_classified["taxon_id"].value_counts().reset_index()
 
-                counter[taxon_id] = counter.get(taxon_id, 0) + 1
+            counts.columns = ["read_id", "count"]
 
-    # Writing results in column format
-    if counter:
-        with open(PATH_OUT, "w", encoding="utf-8") as f_out:
-            # Write header
-            f_out.write("read_id\tcount\n")
-            
-            # Sort by counts (highest to lowest)
-            for taxon, total in sorted(
-                counter.items(), key=lambda x: x[1], reverse=True
-            ):
-                f_out.write(f"{taxon}\t{total}\n")
-        return True
-    return False
+            counts.to_csv(PATH_OUT, sep="\t", index=False)
+            return True
+
+        return False
+
+    except Exception as e:
+        print(f"❌ Error processing Kaiju file {PATH_IN}: {e}")
+        return False
 
 
 # ==========================================================================
 if __name__ == "__main__":
 
-    PATH_IN = snakemake.input.raw_data
-    PATH_OUT = snakemake.output.counted
+    PATH_IN = str(snakemake.input.raw_data)
+    PATH_OUT = str(snakemake.output.counted)
 
     # Report
     sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))

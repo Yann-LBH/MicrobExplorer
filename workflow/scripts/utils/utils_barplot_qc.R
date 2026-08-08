@@ -23,8 +23,11 @@ PDF <- as.character(snakemake@output[["pdf"]])[1]
 PARQUET <- as.character(snakemake@output[["parquet"]])[1]
 
 # Parameters
+STEPS_CONFIG <- snakemake@params[["steps_config"]]
 ACTIVE_MODULES <- as.character(snakemake@params$active_modules)
 
+# Wildcards
+SOURCE <- tolower(as.character(snakemake@wildcards[["source"]]))[1]
 # ==========================================================================
 # 1. Loading and Dynamic Setup
 # ==========================================================================
@@ -32,55 +35,35 @@ ACTIVE_MODULES <- as.character(snakemake@params$active_modules)
 dt_raw <- as.data.table(read_parquet(DATA))
 
 base_col <- if ("extracted" %in% names(dt_raw)) "extracted" else "brut"
-# Standardize case to lowercase just to protect sample column mapping
+
 if ("Sample" %in% names(dt_raw)) setnames(dt_raw, "Sample", "sample")
 
-# Define the global allowed ordering using EXACT column mappings
-ordre_final <- c(
-  "brut", 
-  "p_counted", 
-  "p_filtered", 
-  "p_cpm",
-  "p_rpkm", 
-  "p_rpkm_filtered", 
-  "p_union",
-  "extracted", 
-  "p_intersected",
-  "p_standardized",
-  "p_aggregated",
-  "p_annotated"
-)
+chain <- names(STEPS_CONFIG)
 
+if (is.null(chain) || length(chain) < 2) {
+  stop(sprintf("❌ Error: steps_config invalide ou vide pour source [%s].", SOURCE))
+}
 # ==========================================================================
 # 2. In-place Loss Calculations
 # ==========================================================================
-# --- Shared Steps (Reads & Contigs) ---
-if ("counted" %in% names(dt_raw))       dt_raw[, p_counted       := brut - counted]
-if ("filtered" %in% names(dt_raw))      dt_raw[, p_filtered      := counted - filtered]
-if ("cpm" %in% names(dt_raw))           dt_raw[, p_cpm           := filtered - cpm]
-if ("rpkm" %in% names(dt_raw))          dt_raw[, p_rpkm          := filtered - rpkm]
-if ("rpkm_filtered" %in% names(dt_raw)) dt_raw[, p_rpkm_filtered := rpkm - rpkm_filtered]
-if ("union" %in% names(dt_raw))         dt_raw[, p_union         := rpkm_filtered - union]
+ordre_final <- character(0)
 
-if ("annotated" %in% names(dt_raw)) {
-  if ("union" %in% names(dt_raw)) {
-    dt_raw[, p_annotated := union - annotated]
-  } else if ("cpm" %in% names(dt_raw)) {
-    dt_raw[, p_annotated := cpm - annotated]
+for (i in seq_len(length(chain) - 1)) {
+  prev_step <- chain[i]
+  curr_step <- chain[i + 1]
+  loss_col  <- paste0("p_", curr_step)
+
+  if (prev_step %in% names(dt_raw) && curr_step %in% names(dt_raw)) {
+    dt_raw[, (loss_col) := get(prev_step) - get(curr_step)]
+    ordre_final <- c(ordre_final, curr_step, loss_col)
+  } else {
+    missing <- setdiff(c(prev_step, curr_step), names(dt_raw))
+    warning(sprintf("⚠️ [%s] Étape ignorée (%s → %s) : colonne(s) manquante(s) : %s",
+                     SOURCE, prev_step, curr_step, paste(missing, collapse = ", ")))
   }
 }
 
-# --- KEGG Specific Pipeline Steps ---
-if ("intersected" %in% names(dt_raw))   dt_raw[, p_intersected   := extracted - intersected]
-if ("standardized" %in% names(dt_raw))  dt_raw[, p_standardized  := intersected - standardized]
-if ("aggregated" %in% names(dt_raw))    dt_raw[, p_aggregated    := standardized - aggregated]
-
-# --- End Step Reductions ---
-# Fix: Prevent overwriting p_annotated with a wrong calculation if annotated is missing
-if ("annotated" %in% names(dt_raw) && "aggregated" %in% names(dt_raw)) {
-  dt_raw[, p_annotated := aggregated - annotated]
-}
-
+ordre_final <- c(base_col, ordre_final)
 # ==========================================================================
 # 3. Parquet Output & Hard-Secured Reshaping
 # ==========================================================================
@@ -148,7 +131,7 @@ labels_dyn <- setNames(as.character(active_order), active_order)
 
 if (nrow(dt_plot[variable != base_col]) > 0 && nrow(dt_brut_baseline) > 0) {
   dt_stats <- dt_plot[dt_brut_baseline, on = "Sample"]
-  dt_stats[, Pct := (value / Val_Brut) * 100]
+  dt_stats[, Pct := ifelse(Val_Brut > 0, (value / Val_Brut) * 100, 0)]
   dt_stats <- dt_stats[, .(Mean_Pct = round(mean(Pct, na.rm = TRUE), 1)), by = variable]
   
   # Update dynamic labels only for metrics that have calculated stats
@@ -167,10 +150,14 @@ labels_dyn <- labels_dyn[active_order]
 # ==========================================================================
 # Safety check to avoid palette generation errors if there are too few variables
 num_colors <- max(1L, length(active_order) - 1L)
-couleurs <- setNames(
-  c("grey70", turbo(num_colors))[1:length(active_order)],
-  active_order
-)
+if (length(active_order) > 0) {
+  couleurs <- setNames(
+    c("grey70", turbo(num_colors))[1:length(active_order)],
+    active_order
+  )
+} else {
+  couleurs <- character(0)
+}
 
 sample_levels <- unique(dt_plot$Sample)
 dt_plot[, x_num := as.numeric(factor(Sample, levels = sample_levels))]

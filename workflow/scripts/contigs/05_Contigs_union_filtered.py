@@ -18,12 +18,12 @@ logging.basicConfig(
 )
 
 def get_union_and_extract(
-    ABUNDANCE: str, RPKM_FILTERED: str, DATA_SOURCE: str, PATH_OUT: str
+    ABUNDANCE: str, RPKM_FILTERED: str, PATH_IN: str, PATH_OUT: str
 ) -> int:
     """
-    Union des Contig_ID des deux fichiers filtrés,
-    puis extraction des lignes correspondantes depuis le fichier source.
-    Retourne le nombre de contigs extraits.
+    Union of the Contig_IDs from the two filtered files,
+    followed by extraction of the corresponding lines from the source file.
+    Returns the number of extracted contigs.
     """
     
     ids_abund = pd.read_csv(ABUNDANCE, sep="\t", usecols=["contig_id"])["contig_id"]
@@ -31,7 +31,7 @@ def get_union_and_extract(
 
     target_ids = set(ids_abund).union(ids_rpkm)
 
-    df_source = pd.read_csv(DATA_SOURCE, sep="\t")
+    df_source = pd.read_csv(PATH_IN, sep="\t")
 
     df_out = df_source[df_source["contig_id"].isin(target_ids)]
     df_out.to_csv(PATH_OUT, sep="\t", index=False)
@@ -42,14 +42,14 @@ def get_union_and_extract(
 # --- Exécution ---
 if __name__ == "__main__":
 
-    ABUNDANCE = snakemake.input.abundance
-    RPKM_FILTERED = snakemake.input.rpkm_filtered
-    DATA_SOURCE = snakemake.input.data_source
-    PATH_OUT = snakemake.output.union
+    ABUNDANCE = str(snakemake.input.abundance)
+    RPKM_FILTERED = str(snakemake.input.rpkm_filtered)
+    PATH_IN = str(snakemake.input.data)
+    PATH_OUT = str(snakemake.output.union)
 
     # Report
     sample_name = snakemake.wildcards.sample
-    process = get_union_and_extract(ABUNDANCE, RPKM_FILTERED, DATA_SOURCE, PATH_OUT)
+    process = get_union_and_extract(ABUNDANCE, RPKM_FILTERED, PATH_IN, PATH_OUT)
     if process:
         logging.info(
             f"[CONTIGS_UNION_FILTER] SUCCESS | Sample: {sample_name} | "

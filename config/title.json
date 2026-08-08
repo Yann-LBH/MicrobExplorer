@@ -1,0 +1,58 @@
+{
+  "languages": ["en", "fr"],
+  "translation": [
+    {
+      "key": "TITLE_STACKEDBARPLOT",
+      "en": "{source} | Top {top_n} {feature_type} abundance in {scope}",
+      "fr": "{source} | Abondance du top {top_n} {feature_type} pour {scope}"
+    },
+    {
+      "key": "SUBTITLE_STACKEDBARPLOT",
+      "en": "Mode : {mode} | Metric: {stand_col} | {rank}",
+      "fr": "Mode : {mode} | Mesure: {stand_col} | {rank}"
+
+    },
+    { "key": "all",  "en": "all samples",  "fr": "tous les échantillons" },
+    { "key": "each", "en": "each sample", "fr": "chaque échantillon" },
+    {
+      "key": "TITLE_STACKEDBARPLOT_DESEQ2",
+      "en": "{source} | Top {top_n} {feature_type} differentially abundant in {contrast}",
+      "fr": "{source} | Top {top_n} {feature_type} differentiellement abondant dans {contrast}"
+    },
+    {
+      "key": "SUBTITLE_STACKEDBARPLOT_DESEQ2",
+      "en": "Pvalue threshold : {padj_threshold} | Log2 Fold Change threshold : {lfc_threshold} | {rank}",
+      "fr": "Pvalue seuil : {padj_threshold} | Log2 Fold Change seuil : {lfc_threshold} | {rank}"
+    },
+    {
+      "key": "TITLE_HEATMAP",
+      "en": "{source} | Abundance of the top {top_n} taxons in sample {sample}",
+      "fr": "{source} | Abondance des {top_n} taxons les plus représentés dans l'échantillon {sample}"
+    },
+    {
+      "key": "SUBTITLE_HEATMAP",
+      "en": "Hierarchical clustering: {clust_method} | Distance metric: {distance_method} | {rank}",
+      "fr": "Regroupement hiérarchique : {clust_method} | Mesure de distance : {distance_method} | {rank} "
+    },
+    {
+      "key": "TITLE_PCA",
+      "en": "{source} | Principal Component Analysis (PCA) — {top_n} most variable taxa",
+      "fr": "{source} | Analyse en Composantes Principales (ACP) — {top_n} taxons les plus variables"
+    },
+    {
+      "key": "SUBTITLE_PCA",
+      "en": "Ordination based on CLR distance | DIMENSION {dim_x} vs DIMENSION {dim_y} | {rank}",
+      "fr": "Classement basé sur la distance CLR | DIMENSION {dim_x} vs DIMENSION {dim_y} | {rank}"
+    },
+    {
+      "key": "TITLE_VOLCANO",
+      "en": "{source} | Top {top_n} taxons differentialy abundant in {contrast}",
+      "fr": "{source} | Top {top_n} des taxons différentiellement abondant dans {sample}"
+    },
+    {
+      "key": "SUBTITLE_VOLCANO",
+      "en": "Pvalue threshold : {padj_threshold} | Log2 Fold Change threshold : {lfc_threshold} | {rank}",
+      "fr": "Pvalue seuil : {padj_threshold} | Log2 Fold Change seuil : {lfc_threshold} | {rank}"
+    }
+  ]
+}

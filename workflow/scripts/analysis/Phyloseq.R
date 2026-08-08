@@ -1,101 +1,133 @@
 ################################################################################
 # Project : "MicrobExplorer"
-# Script  : "Analysis : Phyloseq"
+# Script  : "Analysis : Phyloseq on standardized counts"
 # Author  : "Yann Le Bihan"
 # Date    : "2025-12-01"
 # Link    : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
+suppressPackageStartupMessages({
+  # Libraries CRAN
+  library(data.table)
+  library(readxl)
+  # Libraries Bioconductor
+  library(phyloseq)
+})
 # ==========================================================================
 # Configuration (Snakemake)
 # ==========================================================================
-library(data.table)
-library(phyloseq)
-library(readxl)
+source("workflow/scripts/utils/utils_io.R")
 
 # Inputs
 DATA     <- as.character(snakemake@input[["data"]])
 METADATA <- as.character(snakemake@input[["metadata"]])[1]
+TAXONOMY <- as.character(snakemake@input[["taxonomy"]])[1]
 
 # Outputs
 RDS      <- as.character(snakemake@output[["rds"]])[1]
 
-# Paramètres (avec valeurs par défaut au cas où)
+# Parameters
 STAND_COL <- tolower(as.character(snakemake@params[["stand_col"]]))[1]
 
-# ==========================================================================
-# 1. Chargement des métadonnées et des fichiers TSV
-# ==========================================================================
-meta_dt <- as.data.table(read_xlsx(METADATA))
-meta_dt[, sample_id := as.character(sample_id)]
-setkey(meta_dt, sample_id)
-
-df_list <- lapply(DATA, function(f) {
-  file_name <- basename(f)
-  matched_sample <- meta_dt[sapply(sample_id, function(sid) grepl(sid, file_name)), sample_id]
-  
-  if (length(matched_sample) == 0 || is.na(matched_sample)) return(NULL)
-  
-  dt <- fread(f, showProgress = FALSE)
-  if (nrow(dt) == 0) return(NULL)
-  
-  dt[, sample_id := matched_sample]
-  return(dt)
-})
-
-all_data <- rbindlist(Filter(Negate(is.null), df_list), use.names = TRUE, fill = TRUE)
+# Wildcards
+SOURCE <- tolower(as.character(snakemake@wildcards[["source"]]))[1]
 
 # ==========================================================================
-# 2. Automatic Data Type Detection (Reads vs Contigs vs KEGG)
+# 1. Automatic Data Type Detection (Reads vs Contigs vs KEGG)
 # ==========================================================================
-if ("cpm" %in% names(all_data)) {
-  id_col   <- "read_id" 
-  tax_cols <- c("domain", "kingdom", "phylum", "class", "order", "family", "genus", "species")
-  tax_cols <- intersect(tax_cols, names(all_data))
-  message("🦠 Mode detected: Taxonomic (Reads)")
-} else if ("rpkm" %in% names(all_data)) {
-  id_col   <- "contig_id"
-  tax_cols <- c("domain", "kingdom", "phylum", "class", "order", "family", "genus", "species")
-  tax_cols <- intersect(tax_cols, names(all_data))
-  message("🦠 Mode detected: Taxonomic (Contigs)")
+if (grepl("kegg", SOURCE, ignore.case = TRUE)) {
+  target_id <- "kegg_id"
+  tax_cols  <- c("ec_number", "level_1", "level_2", "level_3", "gene_description")
+} else if (grepl("reads", SOURCE, ignore.case = TRUE)) {
+  target_id <- "read_id" 
+  tax_cols  <- c("domain", "kingdom", "phylum", "class", "order", "family", "genus", "species")
+} else if (grepl("contigs", SOURCE, ignore.case = TRUE)) {
+  target_id <- "contig_id"
+  tax_cols  <- c("domain", "phylum", "class", "order", "family", "genus", "species")
 } else {
-  id_col   <- "ko"
-  tax_cols <- intersect(c("pathway", "description", "ec_number", "level_1", "level_2", "level_3", "gene_description"), names(all_data))
-  message("🧬 Mode detected: Functional (KEGG)")
+  stop(sprintf("❌ Error: Unknown SOURCE value [%s]. Expected 'kegg', 'reads', or 'contigs'.", SOURCE))
 }
 
-# Security check for mandatory columns
-if (is.na(id_col) || !id_col %in% names(all_data)) {
-  stop("Error: The dynamic ID column could not be resolved or is missing from data.")
+# ==========================================================================
+# 2. Data loading
+# ==========================================================================
+if (is.null(STAND_COL) || is.na(STAND_COL) || STAND_COL == "") {
+  stop("❌ ERROR: 'stand_col' parameter is missing or empty in Snakemake config.")
 }
-if (!STAND_COL %in% names(all_data)) {
-  stop(sprintf("Error: The abundance column [%s] does not exist in these files.", STAND_COL))
-}
+
+meta_dt <- load_metadata(METADATA)
+
+all_data <- load_tsv_dir_dynamic(
+  paths       = DATA, 
+  meta_dt     = meta_dt, 
+  select_cols = c(target_id, STAND_COL)
+)
 
 # Format IDs as character and clean missing values
-all_data[, (id_col) := as.character(get(id_col))]
-all_data <- all_data[!is.na(get(id_col)) & get(id_col) != "" & get(id_col) != "NA"]
+all_data[, (target_id) := as.character(get(target_id))]
+all_data <- all_data[!is.na(get(target_id)) & get(target_id) != "" & get(target_id) != "NA"]
 
+# Ensure target abundance column is numeric prior to aggregation
+all_data[, (STAND_COL) := as.numeric(get(STAND_COL))]
 # ==========================================================================
 # 3. Build Phyloseq Components
 # ==========================================================================
 
 # --- A. OTU TABLE ---
-# fun.aggregate = sum handles multiple identical KOs per sample perfectly
-formula_str <- as.formula(paste(id_col, "~ sample_id"))
-otu_dt <- dcast(all_data, formula_str, value.var = STAND_COL, fun.aggregate = sum, fill = 0)
+formula_str <- as.formula(paste(target_id, "~ sample_id"))
 
-otu_mat <- as.matrix(otu_dt, rownames = id_col)
+# Safeguard: fun.aggregate = sum handles multiple identical KOs per sample perfectly
+otu_dt <- dcast(
+  all_data,
+  formula_str,
+  value.var = STAND_COL,
+  fun.aggregate = sum,
+  fill = 0
+)
+
+otu_mat <- as.matrix(otu_dt, rownames = target_id)
 mode(otu_mat) <- "numeric"
 
-# --- B. TAX TABLE (FIXED FOR KEGG DUPLICATES) ---
-# Select ID and tax columns, then use unique(..., by = id_col) to keep exactly ONE row per ID
-tax_dt  <- unique(all_data[, c(id_col, tax_cols), with = FALSE], by = id_col)
-tax_mat <- as.matrix(tax_dt, rownames = id_col)
+n_na <- sum(is.na(otu_mat))
+if (n_na > 0) {
+  warning(sprintf("⚠️ WARNING: %d NA values detected in OTU matrix — replaced with 0.", n_na))
+  otu_mat[is.na(otu_mat)] <- 0
+}
 
-# --- C. SAMPLE DATA ---
-sample_df <- as.data.frame(meta_dt[sample_id %in% colnames(otu_mat)])
+# --- B. TAX TABLE (FROM DEDICATED TAXONOMY FILE) ---
+tax_file_dt <- fread(TAXONOMY, showProgress = FALSE)
+setnames(tax_file_dt, tolower(names(tax_file_dt)))
+
+tax_file_dt[, (target_id) := as.character(get(target_id))]
+tax_file_dt <- unique(tax_file_dt, by = target_id)
+
+if (anyDuplicated(tax_file_dt[[target_id]])) {
+  warning(sprintf("⚠️ WARNING: Duplicate %s found in taxonomy file — keeping first occurrence only.", target_id))
+}
+
+tax_dt <- unique(tax_file_dt, by = target_id)
+
+# Select available taxonomy columns
+available_tax_cols <- base::intersect(tax_cols, names(tax_dt))
+tax_mat <- as.matrix(tax_dt[, available_tax_cols, with = FALSE])
+rownames(tax_mat) <- tax_dt[[target_id]]
+
+# Re-align TAX table rows strictly with OTU matrix rows
+tax_mat <- tax_mat[rownames(otu_mat), , drop = FALSE]
+
+n_missing_tax <- sum(is.na(tax_mat[, 1]))
+if (n_missing_tax > 0) {
+  warning(sprintf("⚠️ WARNING: %d taxa present in OTU table have no taxonomy annotation.", n_missing_tax))
+}
+
+# --- C. SAMPLE DATA (STRICT RE-ALIGNMENT & SAFEGUARD) ---
+sample_df <- as.data.frame(meta_dt)
 rownames(sample_df) <- sample_df$sample_id
+sample_df <- sample_df[colnames(otu_mat), , drop = FALSE]
+
+if (anyNA(sample_df$sample_id)) {
+  stop("❌ ERROR: Some samples present in the OTU matrix are missing from metadata after realignment.")
+}
 
 # ==========================================================================
 # 4. Assemble and Save Object

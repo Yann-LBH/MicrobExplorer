@@ -8,6 +8,7 @@
 
 import os
 import logging
+import pandas as pd
 
 logging.basicConfig(
     level=logging.INFO,
@@ -16,35 +17,18 @@ logging.basicConfig(
 )
 
 
-def calculate_cpm(PATH_IN, PATH_OUT):
-    """Calculates Counts Per Million (CPM) for each taxon."""
+def calculate_cpm(PATH_IN: str, PATH_OUT: str) -> int | bool :
+    """Calculates Counts Per Million (CPM) for each taxon using Pandas."""
     try:
-        # First pass: Calculate the total number of reads in the file
-        total_reads = 0
-        data_lines = []
+        # 1. Pandas charge le fichier et détecte automatiquement le header d'origine
+        df = pd.read_csv(PATH_IN, sep="\t", header=0)
         
-        with open(PATH_IN, "r", encoding="utf-8") as f_in:
-            header = f_in.readline()  # Skip header
-            for line in f_in:
-                columns = line.strip().split("\t")
-                if len(columns) >= 2:
-                    try:
-                        reads = int(columns[1])
-                        total_reads += reads
-                        data_lines.append((columns[0], reads))
-                    except ValueError:
-                        continue
-
-        # Second pass: Compute CPM and write to output file
+        total_reads = df["count"].sum()
+        
         if total_reads > 0:
-            with open(PATH_OUT, "w", encoding="utf-8") as f_out:
-                # Write new header containing the cpm column
-                f_out.write("read_id\tcount\tcpm\n")
-                
-                for taxon_id, reads in data_lines:
-                    # CPM Formula: (reads / total_reads) * 1,000,000
-                    cpm = (reads / total_reads) * 1000000
-                    f_out.write(f"{taxon_id}\t{reads}\t{cpm:.4f}\n")
+            df["cpm"] = (df["count"] / total_reads) * 1_000_000
+            
+            df.to_csv(PATH_OUT, sep="\t", index=False)
             return total_reads
         return False
         
@@ -56,8 +40,8 @@ def calculate_cpm(PATH_IN, PATH_OUT):
 # ==========================================================================
 if __name__ == "__main__":
 
-    PATH_IN = snakemake.input.data
-    PATH_OUT = snakemake.output.cpm
+    PATH_IN = str(snakemake.input.data)
+    PATH_OUT = str(snakemake.output.cpm)
 
     # Report
     sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))

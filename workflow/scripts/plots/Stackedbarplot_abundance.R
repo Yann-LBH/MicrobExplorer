@@ -1,6 +1,7 @@
 ################################################################################
 # Project : "MicrobExplorer"
-# Script  : "Unified stacked barplot — pathway / taxonomy / organisms abundance"
+# Script  : "Unified stacked barplot — 
+#            pathway relative / relative by sample / absolute global"
 # Author  : "Yann Le Bihan"
 # Date    : "2025-12-01"
 # Link    : https://github.com/Yann-LBH/MicrobExplorer
@@ -16,20 +17,24 @@
 # ==========================================================================
 
 # Libraries CRAN
-library(data.table)
-library(readxl)
-library(ggplot2)
-library(rlang)
-library(arrow)
-library(glue)
-
+suppressPackageStartupMessages({
+  library(data.table)
+  library(readxl)
+  library(ggplot2)
+  library(rlang)
+  library(arrow)
+})
 # ==========================================================================
 # Configuration Snakemake
 # ==========================================================================
+source("workflow/scripts/utils/utils_title_resolver.R")
+source("workflow/scripts/utils/utils_io.R")
+
 
 # Inputs
 DATA     <- as.character(snakemake@input[["data"]])
 METADATA <- as.character(snakemake@input[["metadata"]])[1]
+TAXONOMY <- as.character(snakemake@input[["taxonomy"]])[1]
 
 # Outputs
 PDF     <- as.character(snakemake@output[["pdf"]])[1]
@@ -46,8 +51,6 @@ LEGEND_SIZE <- as.integer(SHARED$legend_size) %||% 10
 AXES_SIZE   <- as.integer(SHARED$axes_size) %||% 10
 
 # Parameters
-TITLE_TEMPLATE    <- as.character(snakemake@params[["title"]])[1] %||% "{source} | Abundance of the top {top_n} {feature_type} in each sample"
-SUBTITLE_TEMPLATE <- as.character(snakemake@params[["subtitle"]])[1] %||% "Mode : {mode} | Metric: {stand_col} | {rank}"
 MODE              <- as.character(snakemake@params[["mode"]])[1]
 TOP_N             <- as.integer(snakemake@params[["top_n"]])[1] %||% 10
 STAND_COL         <- tolower(as.character(snakemake@params[["stand_col"]])[1])
@@ -60,8 +63,63 @@ SOURCE <- tolower(as.character(snakemake@wildcards[["source"]]))[1]
 FEATURE_TYPE <- if (SOURCE == "kegg") "pathways" else "taxon"
 
 # TITRES ET SUBTITLES UNIFIÉS
-RESOLVED_TITLE    <- glue(TITLE_TEMPLATE, source = toupper(SOURCE), top_n = TOP_N, feature_type = FEATURE_TYPE)
-RESOLVED_SUBTITLE <- glue(SUBTITLE_TEMPLATE, mode = MODE, stand_col = toupper(STAND_COL), rank = RANK)
+RESOLVED_TITLE    <- list(
+  all = resolve_text("TITLE_STACKEDBARPLOT", source = toupper(SOURCE), top_n = TOP_N, feature_type = FEATURE_TYPE, scope = t("all")),
+  each = resolve_text("TITLE_STACKEDBARPLOT", source = toupper(SOURCE), top_n = TOP_N, feature_type = FEATURE_TYPE, scope = t("each"))
+)
+RESOLVED_SUBTITLE <- resolve_text("SUBTITLE_STACKEDBARPLOT", mode = MODE, stand_col = toupper(STAND_COL), rank = RANK)
+
+# ==========================================================================
+# Data loading
+# ==========================================================================
+
+# 1. Metadata loading
+meta_dt <- load_metadata(METADATA)
+
+id_col <- switch(SOURCE,
+  "reads"   = "read_id",
+  "contigs" = "contig_id",
+  "kegg"    = "kegg_id"
+)
+
+# 2. Optimized TSV loading (MUST include id_col so left_join doesn't fail)
+all_data <- load_tsv_dir_dynamic(
+  paths       = DATA,
+  meta_dt     = meta_dt,
+  select_cols = unique(c(id_col, "sample_id", RANK, STAND_COL))
+)
+
+# ==========================================================================
+# TAXONOMY loading and merging
+# ==========================================================================
+dt_taxo <- fread(TAXONOMY)
+
+# 3. Conditional merge with deduplication using data.table syntax
+if (SOURCE == "reads") {
+  dt_taxo_clean <- unique(dt_taxo, by = "tax_id")
+  dt_merged     <- merge(all_data, dt_taxo_clean, by.x = "read_id", by.y = "tax_id", all.x = TRUE)
+  tax_ranks     <- c("tax_id", "scientific_name", "domain", "kingdom", "phylum", "class", "order", "family", "genus", "species")
+
+} else if (SOURCE == "contigs") {
+  dt_taxo_clean <- unique(dt_taxo, by = "contig_id")
+  dt_merged     <- merge(all_data, dt_taxo_clean, by.x = "contig_id", by.y = "contig_id", all.x = TRUE)
+  tax_ranks     <- c("domain", "phylum", "class", "order", "family", "genus", "species")
+
+} else { # KEGG or other sources
+  dt_taxo_clean <- unique(dt_taxo, by = "ko")
+  dt_merged     <- merge(all_data, dt_taxo_clean, by.x = "kegg_id", by.y = "ko", all.x = TRUE)
+  tax_ranks     <- c("ec_number", "level_1", "level_2", "level_3", "gene_description")
+}
+
+# 4. Clean up unassigned taxonomy in-place (replaces mutate + across)
+tax_ranks_present <- intersect(tax_ranks, names(dt_merged))
+for (col in tax_ranks_present) {
+  set(dt_merged, i = which(is.na(dt_merged[[col]])), j = col, value = "Unclassified")
+}
+dt_merged <- dt_merged[meta_dt, on = "sample_id", nomatch = 0L]
+# ==========================================================================
+# Global Graphic initialization
+# ==========================================================================
 
 color_palette <- function(categories) {
   top_cats <- sort(setdiff(categories, "Others"))
@@ -71,7 +129,7 @@ color_palette <- function(categories) {
   list(colours = colours, levels = lvl_order)
 }
 
-# Stacked bar universel (Gère les facettes si demandées)
+# Universal stacked bar
 stacked_bar <- function(dt, x_col, y_col, fill_col, colours, title, subtitle,
                         x_lab, y_lab, fill_lab, facet_col = NULL) {
   theme_function <- match.fun(THEME)
@@ -92,11 +150,10 @@ stacked_bar <- function(dt, x_col, y_col, fill_col, colours, title, subtitle,
       panel.grid.major.x = element_blank()
     )
   
-  # Si on passe un nom de couleur customisé ou généré
   if (is.list(colours)) colours <- colours$colours
   p <- p + scale_fill_manual(values = colours)
   
-  # Ajout dynamique des facettes (Utilisé dans le mode Reads)
+  # Dynamic Facet Addition (Used in run_absolute_global mode)
   if (!is.null(facet_col)) {
     p <- p + facet_wrap(as.formula(paste0("~", facet_col)), scales = "free_x") +
       theme(strip.text = element_text(face = "bold", size = 12), panel.spacing = unit(1, "lines"))
@@ -104,111 +161,101 @@ stacked_bar <- function(dt, x_col, y_col, fill_col, colours, title, subtitle,
   return(p)
 }
 
-load_tsv_dir_dynamic <- function(paths, meta_dt, select_cols = NULL) {
-  rbindlist(lapply(paths, function(f) {
-    file_name <- basename(f)
-    matched_sample <- meta_dt[sapply(sample_id, function(sid) grepl(sid, file_name)), sample_id]
-    if (length(matched_sample) == 0 || is.na(matched_sample)) return(NULL)
-    dt <- if (is.null(select_cols)) fread(f) else fread(f, select = intersect(select_cols, names(fread(f, nrows = 0))))
-    if (nrow(dt) == 0) return(NULL)
-    dt[, sample_id := matched_sample]
-  }), use.names = TRUE, fill = TRUE)
-}
-
-load_metadata <- function(path) {
-  dt <- if (tolower(tools::file_ext(path)) %in% c("xlsx", "xls")) as.data.table(readxl::read_excel(path)) else fread(path)
-  dt[, c("sample_id", "name", "date") := .(as.character(sample_id), as.character(name), as.character(date))]
-}
-
 # ==========================================================================
 # RUN MODES
 # ==========================================================================
 
-run_pathway_relative <- function(title = RESOLVED_TITLE, subtitle = RESOLVED_SUBTITLE) {
+run_pathway_relative <- function(subtitle = RESOLVED_SUBTITLE) {
   target_col <- STAND_COL
   if (is.na(target_col) || target_col == "") stop("L'argument 'stand_col' est manquant ou égal à NA.")
 
-  meta <- load_metadata(METADATA)
-  all_data <- load_tsv_dir_dynamic(DATA, meta, select_cols = c(RANK, target_col))
-  write_parquet(all_data[meta, on = "sample_id", nomatch = 0L], PARQUET)
+  write_parquet(dt_merged, PARQUET)
 
-  agg <- all_data[meta, on = "sample_id", nomatch = 0L][, .(total = sum(get(target_col), na.rm = TRUE)), by = .(name, date, get(RANK))]
-  setnames(agg, "get", RANK)
-  agg[, category := fifelse(frank(-total, ties.method = "random") <= TOP_N, as.character(get(RANK)), "Others"), by = .(name, date)]
+  agg <- dt_merged[, .(total = sum(get(target_col), na.rm = TRUE)), by = c("name", "date", RANK)]
+  agg[, category := fifelse(frank(-total, ties.method = "first") <= TOP_N, as.character(get(RANK)), "Others"), by = .(name, date)]
   
   final_dt <- agg[, .(sum_val = sum(total)), by = .(name, date, category)][, pct := (sum_val / sum(sum_val)) * 100, by = .(name, date)]
+  # Stack Order Management
+  cat_order <- final_dt[, .(total_abundance = sum(sum_val)), by = category][order(total_abundance)]$category
+  cat_order <- c(setdiff(cat_order, "Others"), "Others") # keep other at top
   pal <- color_palette(unique(final_dt$category))
-  final_dt[, category := factor(category, levels = pal$levels)]
+  final_dt[, category := factor(category, levels = cat_order)]
 
   pdf(PDF, width = PDF_SIZE[1], height = PDF_SIZE[2])
-  lapply(split(final_dt, by = "name"), function(df_cond) {
-    # Using dynamic title matching the exact sample name
-    print(stacked_bar(df_cond, "date", "pct", "category", pal, title, subtitle, "Date", "Relative Abundance (%)", "Pathways"))
-  })
-  dev.off()
+  on.exit(if (names(dev.cur()) != "null device") dev.off())
+
+  # Using dynamic title matching the exact sample name
+  print(stacked_bar(final_dt, "date", "pct", "category", pal, RESOLVED_TITLE$each, subtitle, "Date", "Relative Abundance (%)", "Pathways", facet_col = "name"))
 }
 
-run_relative_by_sample <- function(title = RESOLVED_TITLE, subtitle = RESOLVED_SUBTITLE) {
+run_relative_by_sample <- function(subtitle = RESOLVED_SUBTITLE) {
   target_col <- STAND_COL
   if (is.na(target_col) || target_col == "") stop("L'argument 'stand_col' est manquant ou égal à NA.")
 
-  meta <- load_metadata(METADATA)
-  dt_taxo <- load_tsv_dir_dynamic(DATA, meta)[meta, on = "sample_id", nomatch = 0L]
-  write_parquet(dt_taxo, PARQUET)
+  write_parquet(dt_merged, PARQUET)
 
-  setnames(dt_taxo, RANK, "Taxon")
-  agg <- dt_taxo[, .(Abund_Sum = sum(get(target_col), na.rm = TRUE)), by = .(name, date, Taxon)][, Abund_Pct := (Abund_Sum / sum(Abund_Sum)) * 100, by = .(name, date)]
+  setnames(dt_merged, RANK, "Taxon")
+  agg <- dt_merged[, .(Abund_Sum = sum(get(target_col), na.rm = TRUE)), by = c("name", "date", "Taxon")][, Abund_Pct := (Abund_Sum / sum(Abund_Sum)) * 100, by = .(name, date)]
   top_taxa <- agg[, .(G = sum(Abund_Sum)), by = Taxon][order(-G)[seq_len(min(TOP_N, .N))], Taxon]
   agg[, Taxon_Final := fifelse(Taxon %in% top_taxa, Taxon, "Others")]
-  final_dt <- agg[, .(Abund_Pct = sum(Abund_Pct)), by = .(name, date, Taxon_Final)]
 
+  final_dt <- agg[, .(Abund_Pct = sum(Abund_Pct)), by = .(name, date, Taxon_Final)]
+  # Stack Order Management
+  tax_order <- final_dt[, .(total_abundance = sum(Abund_Pct)), by = Taxon_Final][order(total_abundance)]$Taxon_Final
+  tax_order <- c(setdiff(tax_order, "Others"), "Others")
+  pal <- color_palette(unique(final_dt$Taxon_Final))
+  final_dt[, Taxon_Final := factor(Taxon_Final, levels = tax_order)]
+  
   pdf(PDF, width = PDF_SIZE[1], height = PDF_SIZE[2])
-  # Harmonized: loop using split() instead of unique() + manual filtering
-  lapply(split(final_dt, by = "name"), function(df_cond) {
-    pal <- color_palette(unique(df_cond$Taxon_Final))
-    df_cond[, Taxon_Final := factor(Taxon_Final, levels = pal$levels)]
-    # Standardized title structure to match the sample view
-    print(stacked_bar(df_cond, "date", "Abund_Pct", "Taxon_Final", pal, title, subtitle, "Date", "Relative Abundance (%)", RANK))
-  })
-  dev.off()
+  on.exit(if (names(dev.cur()) != "null device") dev.off(), add = TRUE)
+
+  # Standardized title structure to match the each view
+  print(stacked_bar(final_dt, "date", "Abund_Pct", "Taxon_Final", pal, RESOLVED_TITLE$each, subtitle, "Date", "Relative Abundance (%)", RANK, facet_col = "name"))
 }
 
-run_absolute_global <- function(title = RESOLVED_TITLE, subtitle = RESOLVED_SUBTITLE) {
+run_absolute_global <- function(subtitle = RESOLVED_SUBTITLE) {
   target_col <- STAND_COL
   if (is.na(target_col) || target_col == "") stop("L'argument 'stand_col' est manquant ou égal à NA.")
 
-  meta <- load_metadata(METADATA)
-  dt <- load_tsv_dir_dynamic(DATA, meta)[meta, on = "sample_id", nomatch = 0L]
-  if (!RANK %in% names(dt)) stop(sprintf("The taxonomy column [%s] is missing.", RANK))
-  dt[get(RANK) == "" | is.na(get(RANK)), (RANK) := "Unclassified"]
-  write_parquet(dt, PARQUET)
+  if (!RANK %in% names(dt_merged)) stop(sprintf("The taxonomy column [%s] is missing.", RANK))
+  dt_merged[get(RANK) == "" | is.na(get(RANK)), (RANK) := "Unclassified"]
+  write_parquet(dt_merged, PARQUET)
 
-  taxa_config_global <- dt[, .(Global_Abund = sum(get(target_col), na.rm = TRUE)), by = c(RANK)][order(-Global_Abund)]
+  taxa_config_global <- dt_merged[, .(Global_Abund = sum(get(target_col), na.rm = TRUE)), by = c(RANK)][order(-Global_Abund)]
   top_genera <- taxa_config_global[seq_len(min(TOP_N, .N))][[RANK]]
 
   # --- Plot 1: Global horizontal bar ---
   plot1_dt <- taxa_config_global[, .(Taxa_Grouped = fifelse(get(RANK) %in% top_genera, get(RANK), "Others"), Global_Abund)][, .(Total_Abund = sum(Global_Abund)), by = Taxa_Grouped][order(Total_Abund)]
-  plot1_dt[, Taxa_Grouped := factor(Taxa_Grouped, levels = Taxa_Grouped)]
+  # Stack Order Management
+  taxa_order <- plot1_dt[order(Total_Abund)]$Taxa_Grouped
+  taxa_order <- c(setdiff(taxa_order, "Others"), "Others")
+  plot1_dt[, Taxa_Grouped := factor(Taxa_Grouped, levels = taxa_order)]
+
+  # --- 3. Palette générée APRÈS la création de l'ordre ---
+  pal_global <- color_palette(levels(plot1_dt$Taxa_Grouped))
   
+  theme_function <- match.fun(THEME)
   p_global <- ggplot(plot1_dt, aes(x = Total_Abund, y = Taxa_Grouped, fill = Taxa_Grouped)) +
-    geom_col(show.legend = FALSE) + get(THEME)() + theme(plot.title = element_text(face = "bold", size = TITLE_SIZE), axis.text.y = element_text(size = AXES_SIZE, face = "italic")) +
+    geom_col(show.legend = FALSE) + 
+    scale_x_continuous(expand = expansion(mult = c(0.05, 0.2))) + 
+    theme_function() + 
+    theme(plot.title = element_text(face = "bold", size = TITLE_SIZE), axis.text.y = element_text(size = AXES_SIZE, face = "italic")) +
     # Now explicitly uses the title variable passed to the function
-    labs(title = title, subtitle = subtitle, x = paste("Total", toupper(target_col)), y = RANK) +
-    scale_fill_manual(values = color_palette(unique(plot1_dt$Taxa_Grouped))$colours)
+    labs(title = RESOLVED_TITLE$all, subtitle = subtitle, x = paste("Total", toupper(target_col)), y = RANK) +
+    scale_fill_manual(values = pal_global$colours, drop = FALSE)
 
   # --- Plot 2: Utilisation propre du Helper stacked_bar avec facettes ! ---
-  plot2_dt <- dt[!is.na(name) & !is.na(date), .(Total_Abund = sum(get(target_col), na.rm = TRUE)), by = c("name", "date", RANK)]
+  plot2_dt <- dt_merged[!is.na(name) & !is.na(date), .(Total_Abund = sum(get(target_col), na.rm = TRUE)), by = c("name", "date", RANK)]
   plot2_dt[, Taxa_Grouped := fifelse(get(RANK) %in% top_genera, get(RANK), "Others")]
   plot2_dt <- plot2_dt[, .(Total_Abund = sum(Total_Abund)), by = .(name, date, Taxa_Grouped)]
-  pal_stacked <- color_palette(unique(plot2_dt$Taxa_Grouped))
-  plot2_dt[, Taxa_Grouped := factor(Taxa_Grouped, levels = pal_stacked$levels)]
 
+  plot2_dt[, Taxa_Grouped := factor(Taxa_Grouped, levels = taxa_order)]
   # Passed title and subtitle variables safely downstream
-  p_stacked <- stacked_bar(plot2_dt, "date", "Total_Abund", "Taxa_Grouped", pal_stacked, title, subtitle, "Sampling Date", "Abundance", RANK, facet_col = "name")
+  p_stacked <- stacked_bar(plot2_dt, "date", "Total_Abund", "Taxa_Grouped", pal_global, RESOLVED_TITLE$each, subtitle, "Sampling Date", "Abundance", RANK, facet_col = "name")
 
   pdf(PDF, width = PDF_SIZE[1], height = PDF_SIZE[2])
+  on.exit(if (names(dev.cur()) != "null device") dev.off())
   print(p_global); print(p_stacked)
-  dev.off()
 }
 
 # ==========================================================================

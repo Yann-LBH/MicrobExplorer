@@ -19,8 +19,8 @@ logging.basicConfig(
 
 def get_min_rpkm_across_samples(files: list[str]) -> pd.Series:
     """
-    Retourne le RPKM minimum par contig sur tous les échantillons.
-    Un contig absent d'un échantillon vaut 0.0 pour cet échantillon.
+    Returns the minimum RPKM per contig across all samples.
+    A contig that is absent from a sample is assigned a value of 0.0 for that sample.
     """
     frames = [
         pd.read_csv(f, sep="\t", usecols=["contig_id", "rpkm"]).set_index("contig_id")[
@@ -28,7 +28,8 @@ def get_min_rpkm_across_samples(files: list[str]) -> pd.Series:
         ]
         for f in files
     ]
-    # concat en colonnes puis min par ligne — gère les NaN (contig absent) comme 0.0
+    # Create a table with sample in col and contig_id + rpkm in row. 
+    # Take the minimal rpkm value of all files and fill the row with.
     return pd.concat(frames, axis=1).fillna(0.0).min(axis=1)
 
 
@@ -36,11 +37,13 @@ def filter_by_min_rpkm(
     current: str, PATH_OUT: str, global_min: pd.Series, RPKM_THRESHOLD: float
 ) -> int:
     """
-    Filtre le TSV courant : garde les contigs dont le RPKM min global >= threshold.
-    Retourne le nombre de lignes conservées.
+    Filters the current TSV file: keeps contigs with a minimum global RPKM value >= to the threshold.
+    Returns the number of lines retained.
     """
     df = pd.read_csv(current, sep="\t")
+    # Mask True / False based on global value
     mask = df["contig_id"].map(global_min).fillna(0.0) >= RPKM_THRESHOLD
+    # Filter original df with mask
     df[mask].to_csv(PATH_OUT, sep="\t", index=False)
     return mask.sum()
 
@@ -49,7 +52,7 @@ def filter_by_min_rpkm(
 if __name__ == "__main__":
 
     PATH_IN = snakemake.input
-    PATH_OUT = snakemake.output.rpkm_filtered
+    PATH_OUT = str(snakemake.output.rpkm_filtered)
     RPKM_THRESHOLD = float(snakemake.params.rpkm_threshold)
 
     current = snakemake.input[0]

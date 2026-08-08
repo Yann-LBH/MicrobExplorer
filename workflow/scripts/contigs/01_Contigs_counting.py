@@ -29,11 +29,11 @@ def filter_contigs(PATH_IN: str, PATH_OUT: str, THRESHOLD: int) -> int:
         PATH_IN, 
         sep="\t", 
         header=None, 
-        names=["contig_id", "length", "read_mapped", "read_unmapped"],
+        names=["contig_id", "contig_length", "read_mapped", "read_unmapped"],
         dtype={"length": int}
     )
 
-    df_filtered = df[df["length"] >= THRESHOLD]
+    df_filtered = df[df["contig_length"] >= THRESHOLD]
 
     df_filtered.to_csv(PATH_OUT, sep="\t", index=False, header=True)
     return len(df_filtered)
@@ -42,8 +42,8 @@ def filter_contigs(PATH_IN: str, PATH_OUT: str, THRESHOLD: int) -> int:
 # --- Execution ---
 if __name__ == "__main__":
 
-    PATH_IN = snakemake.input.raw_data
-    PATH_OUT = snakemake.output.counted
+    PATH_IN = str(snakemake.input.raw_data)
+    PATH_OUT = str(snakemake.output.counted)
     THRESHOLD = int(snakemake.params.length_threshold)
 
     # Report

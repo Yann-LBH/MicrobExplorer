@@ -1,4 +1,11 @@
-import os
+################################################################################
+# Project : "MicrobExplorer"
+# Script: "Calcule the contigs abundance"
+# Author: "Yann Le Bihan"
+# Date: "2025-12-01"
+# Link : https://github.com/Yann-LBH/MicrobExplorer
+################################################################################
+
 import logging
 import pandas as pd
 
@@ -10,22 +17,28 @@ logging.basicConfig(
 )
 
 if __name__ == "__main__":
-    # English comments as requested
-    INPUT_PATH = snakemake.input.all_data
-    OUTPUT_PATH = snakemake.output.global_abundance
+    PATH_IN = snakemake.input.all_data
+    PATH_OUT = str(snakemake.output.global_abundance)
 
     global_counts = pd.Series(dtype=int)
 
     # Sum abundances across all files
-    for f in INPUT_PATH:
+    for f in PATH_IN:
         chunk = pd.read_csv(f, sep="\t", usecols=["contig_id", "read_mapped"])
 
         file_counts = chunk.groupby("contig_id")["read_mapped"].sum()
         global_counts = global_counts.add(file_counts, fill_value=0)
 
     # Save the reference global table
-    global_counts.to_csv(
-        OUTPUT_PATH, sep="\t", header=["total_abundance"], index_label="contig_id"
-    )
-
-    print(f"✓ CONTIGS : Global abundance step passed successfully -> {OUTPUT_PATH}")
+    try:
+        global_counts.to_csv(
+            PATH_OUT, sep="\t", header=["total_abundance"], index_label="contig_id"
+        )
+        logging.info(
+            f"[CONTIGS_GLOBAL_ABUNDANCE] SUCCESS | Output: {PATH_OUT}"
+        )
+    except Exception as e:
+        logging.error(
+            f"[CONTIGS_GLOBAL_ABUNDANCE] FAILED | Output: {PATH_OUT} | Error: {e}"
+        )
+        raise

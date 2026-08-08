@@ -1,19 +1,29 @@
 ################################################################################
 # Project : "MicrobExplorer"
-# Script  : "Analysis : DESeq2"
+# Script  : "Analysis : DESeq2 on raw counts"
 # Author  : "Yann Le Bihan"
 # Date    : "2025-12-01"
 # Link    : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
-library(data.table)
-library(readxl)
-library(DESeq2)
-library(arrow)
+suppressPackageStartupMessages({
+  # Libraries CRAN
+  library(data.table)
+  library(readxl)
+  #Libraries Bioconductor
+  library(DESeq2)
+  library(arrow)
+})
+
+# ==========================================================================
+# Configuration (Snakemake)
+# ==========================================================================
+source("workflow/scripts/utils/utils_io.R")
 
 # Inputs
 DATA     <- as.character(snakemake@input[["data"]])
 METADATA <- as.character(snakemake@input[["metadata"]])[1]
+TAXONOMY <- as.character(snakemake@input[["taxonomy"]])[1]
 
 # Outputs
 RDS      <- as.character(snakemake@output[["rds"]])[1]
@@ -21,14 +31,20 @@ PARQUET  <- as.character(snakemake@output[["parquet"]])[1]
 
 # Controls and parameters
 CONTRAST_LIST <- tolower(as.character(snakemake@params[["contrast"]]))
-REF       <- as.character(snakemake@params[["ref"]])[1] # Case-sensitive matching (e.g., "TD1")
+REF       <- as.character(snakemake@params[["ref"]])[1]
+SIZEFACTOR <- as.character(snakemake@params[["sizefactor"]])[1]
+TEST      <- as.character(snakemake@params[["test"]])[1]
+FITTYPE   <- as.character(snakemake@params[["fittype"]])[1]
+
+# Wildcards
+SOURCE <- tolower(as.character(snakemake@wildcards[["source"]]))[1]
 
 # ==========================================================================
 # 1. Loading Metadata and Files
 # ==========================================================================
-# All script comments are provided in English as requested.
 
-meta_dt <- as.data.table(read_xlsx(METADATA))
+# 1. Metadata loading
+meta_dt <- load_metadata(METADATA)
 meta_dt[, Date_Real := as.Date(date, format = "%d/%m/%Y")]
 
 if (!"group" %in% names(meta_dt)) {
@@ -38,71 +54,79 @@ if (!"group" %in% names(meta_dt)) {
 # Validate if the REF from config exists in your Excel "group" column
 if (is.null(REF) || REF == "" || is.na(REF) || !(REF %in% meta_dt$group)) {
   if (!is.null(REF) && REF != "" && !is.na(REF)) {
-    cat("⚠️ WARNING: The 'ref' defined in config (", REF, ") was not found in the Excel 'group' column. Falling back to default.\n")
+    warning("⚠️ WARNING: The 'ref' defined in config (", REF, ") was not found in the Excel 'group' column. Falling back to default.\n")
   }
   REF <- sort(meta_dt$group)[1]
 }
 
-# Cross-load files matching existing sample ids
-raw_list <- lapply(DATA, function(f) {
-  file_name <- basename(f)
-  
-  matched_sample <- meta_dt$sample_id[sapply(meta_dt$sample_id, function(sid) grepl(sid, file_name))]
+# 2. Chargement du count_matrix (sécurités déportées dans utils_io.R)
+count_matrix <- build_deseq_count_matrix(DATA, valid_ids = meta_dt$sample_id)
 
-  if (length(matched_sample) == 0 || is.na(matched_sample[1]) || matched_sample[1] == "") {
-    stop(paste0(
-      "\n❌ ERROR: No matching sample_id found in metadata for file: '", file_name, "'\n",
-      "Please check if this sample is declared in your metadata.xlsx or verify the filename."
+# 3. Synchronize metadata (Keep it as data.table to prevent downstream "." query crashes)
+meta_dt <- meta_dt[match(colnames(count_matrix), sample_id)]
+
+# ==========================================================================
+# TAXONOMY loading and merging
+# ==========================================================================
+load_taxonomy_table <- function(taxonomy_path, source) {
+  if (!file.exists(taxonomy_path)) {
+    stop(sprintf("❌ ERROR: Taxonomy file not found: %s", taxonomy_path))
+  }
+  dt_taxo <- fread(taxonomy_path, showProgress = FALSE)
+  setnames(dt_taxo, tolower(names(dt_taxo)))
+
+  if (source == "reads") {
+    join_col <- "tax_id"
+    tax_ranks <- c("tax_id", "scientific_name", "domain", "kingdom",
+                   "phylum", "class", "order", "family", "genus", "species")
+  } else if (source == "contigs") {
+    join_col <- "contig_id"
+    tax_ranks <- c("domain", "phylum", "class", "order", "family", "genus", "species")
+  } else {
+    join_col <- "ko"
+    tax_ranks <- c("ec_number", "level_1", "level_2", "level_3", "gene_description")
+  }
+
+  if (!join_col %in% names(dt_taxo)) {
+    stop(sprintf(
+      "❌ ERROR: Expected join column '%s' not found in taxonomy file. Available columns: %s",
+      join_col, paste(names(dt_taxo), collapse = ", ")
     ))
   }
-  
-  dt <- fread(f, showProgress = FALSE)
-  if (nrow(dt) == 0) return(NULL)
 
-  setnames(dt, tolower(names(dt)))
-  
-  # Identify the ID column
-  current_id <- base::intersect(c("read_id", "contig_id", "kegg_id"), names(dt))[1]
-  if (is.na(current_id)) return(NULL)
-  
-  # Identify the count column and enforce numeric representation
-  abundance_col <- base::intersect(c("count", "read_mapped"), names(dt))[1]
-  if (is.na(abundance_col)) {
-    abundance_col <- names(dt)[ncol(dt)]
+  dt_taxo[, (join_col) := as.character(get(join_col))]
+
+  if (anyDuplicated(dt_taxo[[join_col]])) {
+    n_dup <- sum(duplicated(dt_taxo[[join_col]]))
+    warning(sprintf(
+      "⚠️ WARNING: %d duplicated '%s' found in taxonomy file — keeping first occurrence only.",
+      n_dup, join_col
+    ))
   }
-  dt[, (abundance_col) := lapply(.SD, as.numeric), .SDcols = abundance_col]
-  
-  setnames(dt, abundance_col, matched_sample[1])
-  dt <- dt[, c(current_id, matched_sample[1]), with = FALSE]
-  
-  list(dt = dt, sample_id = matched_sample[1])
-})
+  dt_taxo <- unique(dt_taxo, by = join_col)
 
-raw_list <- Filter(Negate(is.null), raw_list)
-
-if (length(raw_list) == 0) {
-  stop("🚨 Step error: raw_list is empty. No valid sample data tables were loaded for DESeq2 analysis.")
+  tax_ranks_present <- intersect(tax_ranks, names(dt_taxo))
+  list(dt = dt_taxo[, c(join_col, tax_ranks_present), with = FALSE],
+       join_col = join_col,
+       tax_ranks = tax_ranks_present)
 }
 
-possible_ids <- base::intersect(c("read_id", "contig_id", "kegg_id"), names(raw_list[[1]]$dt))[1]
-if (is.na(possible_ids)) {
-  possible_ids <- "read_id"
+annotate_with_taxonomy <- function(dt_results, taxo_ref, id_col_results = "Feature_ID") {
+  dt_results[, (id_col_results) := as.character(get(id_col_results))]
+
+  dt_annotated <- merge(
+    dt_results, taxo_ref$dt,
+    by.x = id_col_results, by.y = taxo_ref$join_col, all.x = TRUE
+  )
+
+  for (col in taxo_ref$tax_ranks) {
+    n_na <- sum(is.na(dt_annotated[[col]]))
+    if (n_na > 0) {
+      set(dt_annotated, i = which(is.na(dt_annotated[[col]])), j = col, value = "Unclassified")
+    }
+  }
+  dt_annotated
 }
-
-# Merge count matrices
-count_data <- Reduce(
-  function(a, b) merge(a, b, by = possible_ids, all = FALSE),
-  lapply(raw_list, `[[`, "dt")
-)
-
-count_matrix <- as.matrix(count_data[, !possible_ids, with = FALSE])
-rownames(count_matrix) <- count_data[[possible_ids]]
-count_matrix <- round(count_matrix)
-
-# Synchronize metadata (Keep it as data.table to prevent downstream "." query crashes)
-meta_dt <- meta_dt[sample_id %in% colnames(count_matrix)]
-
-rm(raw_list)
 
 # ==========================================================================
 # Utility Function: Extract Contrast Results
@@ -116,48 +140,51 @@ extract_results <- function(dds, contrast_vec, nom_contraste, extra_cols) {
 }
 
 # ==========================================================================
-# 2. Condition Analysis (Group vs Reference)
+# 2. Condition Analysis (Group vs Reference) & (Combo)
 # ==========================================================================
-run_deseq_by_name_ref <- function(count_matrix, meta_dt, REF, RDS, PARQUET) {
+run_deseq_group_analyse <- function(count_matrix, meta_dt, REF, CONTRAST_LIST) {
+  if (length(CONTRAST_LIST) > 0 && !any(c("ref", "combo") %in% CONTRAST_LIST)) return(NULL)
+
   col_data <- as.data.frame(meta_dt[, .(sample_id, group)])
   rownames(col_data) <- col_data$sample_id
-  
+  col_data <- col_data[colnames(count_matrix), , drop = FALSE]
+  if (anyNA(col_data$sample_id)) {
+    stop("❌ ERROR: Some samples in count_matrix are missing from metadata after realignment.")
+  }
   col_data$group <- relevel(as.factor(col_data$group), ref = REF)
 
   dds <- DESeqDataSetFromMatrix(count_matrix, col_data, design = ~ group)
-  dds <- estimateSizeFactors(dds, type = "poscounts")
-  dds <- DESeq(dds, test = "Wald", fitType = "parametric")
+  dds <- estimateSizeFactors(dds, type = SIZEFACTOR)
+  dds <- DESeq(dds, test = TEST, fitType = FITTYPE)
 
   groupes <- levels(col_data$group)
 
-  results_dt <- rbindlist(lapply(
-    groupes[groupes != REF],
-    function(g1) {
-      extract_results(
-        dds,
-        c("group", g1, REF),
-        paste0(g1, "_vs_", REF),
-        list(Test_Group = g1, Ref_Group = REF)
-      )
-    }
-  ))
+  dt_ref <- if (length(groupes) >= 2L && (length(CONTRAST_LIST) == 0 || "ref" %in% CONTRAST_LIST)) {
+    rbindlist(lapply(groupes[groupes != REF], function(g1) {
+      extract_results(dds, c("group", g1, REF), paste0(g1, "_vs_", REF), list(Test_Group = g1, Ref_Group = REF))
+    }))
+  } else NULL
+
+  # Pairwise combos (executed if requested or by default, and if >= 2 groups)
+  dt_combo <- if (length(groupes) >= 2L && (length(CONTRAST_LIST) == 0 || "combo" %in% CONTRAST_LIST)) {
+    combos <- combn(groupes, 2, simplify = FALSE)
+    rbindlist(lapply(combos, function(pair) {
+      g2 <- pair[1]; g1 <- pair[2]
+      extract_results(dds, c("group", g1, g2), paste0(g1, "_vs_", g2), list(Test_Group = g1, Ref_Group = g2))
+    }))
+  } else NULL
   
-  return(list(dt = results_dt, dds = dds))
-  return(results_dt)
-  message("✓ By group reference (ref ", REF, ") : ", nrow(results_dt), " rows generated.")
+  message("✓ By group reference (ref ", REF, ") : ", if (is.null(dt_ref)) 0 else nrow(dt_ref), " rows generated.")
+  message("✓ By group combinations (all combos) : ", if (is.null(dt_combo)) 0 else nrow(dt_combo), " rows generated.")
+  message("✓ Group analyses (REF + Combos) completed.")
+  return(list(dds = dds, dt_ref = dt_ref, dt_combo = dt_combo))
 }
 
 # ==========================================================================
 # 3. Chronological Analysis (T vs T-1)
 # ==========================================================================
-run_deseq_by_date <- function(count_matrix, meta_dt, RDS, PARQUET) {
-  col_data <- as.data.frame(meta_dt[, .(sample_id, date, Date_Real)])
-  rownames(col_data) <- col_data$sample_id
-  col_data$Date_Group <- as.factor(col_data$date)
-
-  dds <- DESeqDataSetFromMatrix(count_matrix, col_data, design = ~Date_Group)
-  dds <- estimateSizeFactors(dds, type = "poscounts")
-  dds <- DESeq(dds, test = "Wald", fitType = "parametric")
+run_deseq_by_date <- function(count_matrix, meta_dt, CONTRAST_LIST) {
+  if (length(CONTRAST_LIST) > 0 && !"date" %in% CONTRAST_LIST) return(NULL)
 
   timeline <- unique(meta_dt[, .(Date_Real, date)])[order(Date_Real)]
 
@@ -166,7 +193,19 @@ run_deseq_by_date <- function(count_matrix, meta_dt, RDS, PARQUET) {
     return(invisible(NULL))
   }
 
-  results_dt <- rbindlist(lapply(
+  col_data <- as.data.frame(meta_dt[, .(sample_id, date, Date_Real)])
+  rownames(col_data) <- col_data$sample_id
+  col_data <- col_data[colnames(count_matrix), , drop = FALSE]
+  if (anyNA(col_data$sample_id)) {
+    stop("❌ ERROR: Some samples in count_matrix are missing from metadata after realignment.")
+  }
+  col_data$Date_Group <- as.factor(col_data$date)
+
+  dds <- DESeqDataSetFromMatrix(count_matrix, col_data, design = ~Date_Group)
+  dds <- estimateSizeFactors(dds, type = SIZEFACTOR)
+  dds <- DESeq(dds, test = TEST, fitType = FITTYPE)
+
+  dt_date <- rbindlist(lapply(
     2:nrow(timeline),
     function(i) {
       t_curr <- as.character(timeline$date[i])
@@ -180,43 +219,8 @@ run_deseq_by_date <- function(count_matrix, meta_dt, RDS, PARQUET) {
     }
   ))
 
-  return(list(dt = results_dt, dds = dds))
-  return(results_dt)
-  message("✓ By timeline (T vs T-1) : ", nrow(results_dt), " rows generated.")
-}
-
-# ==========================================================================
-# 4. Pairwise Combination Analysis (All Pairs)
-# ==========================================================================
-message("N samples in count_matrix (kegg): ", ncol(count_matrix))
-message("Colnames: ", paste(colnames(count_matrix), collapse=", "))
-message("Groups present: ", paste(unique(meta_dt$group), collapse=", "))
-print(table(meta_dt$group))
-run_deseq_by_name_combos <- function(count_matrix, meta_dt, RDS, PARQUET) {
-  col_data <- as.data.frame(meta_dt[, .(sample_id, group)])
-  rownames(col_data) <- col_data$sample_id
-  col_data$group <- as.factor(col_data$group)
-
-  dds <- DESeqDataSetFromMatrix(count_matrix, col_data, design = ~group)
-  dds <- estimateSizeFactors(dds, type = "poscounts")
-  dds <- DESeq(dds, test = "Wald", fitType = "parametric")
-
-  combos <- combn(levels(col_data$group), 2, simplify = FALSE)
-
-  results_dt <- rbindlist(lapply(combos, function(pair) {
-    g2 <- pair[1]
-    g1 <- pair[2]
-    extract_results(
-      dds,
-      c("group", g1, g2),
-      paste0(g1, "_vs_", g2),
-      list(Test_Group = g1, Ref_Group = g2)
-    )
-  }))
-  
-  return(list(dt = results_dt, dds = dds))
-  return(results_dt)
-  message("✓ By group combinations (all combos) : ", nrow(results_dt), " rows generated.")
+  message("✓ By timeline (T vs T-1) : ", nrow(dt_date), " rows generated.")
+  return(list(dt = dt_date, dds = dds))
 }
 
 # ==========================================================================
@@ -224,32 +228,47 @@ run_deseq_by_name_combos <- function(count_matrix, meta_dt, RDS, PARQUET) {
 # ==========================================================================
 
 # 1. Run all analyses and return both the results table AND the dds object from each
-res_ref    <- run_deseq_by_name_ref(count_matrix, meta_dt, REF) 
-res_date   <- run_deseq_by_date(count_matrix, meta_dt)
-res_combos <- run_deseq_by_name_combos(count_matrix, meta_dt)
+res_group    <- run_deseq_group_analyse(count_matrix, meta_dt, REF, CONTRAST_LIST) 
+res_date   <- run_deseq_by_date(count_matrix, meta_dt, CONTRAST_LIST)
 
-# 2. Add Contrast_Type tags to tables
-dt_ref   <- res_ref$dt[, Contrast_Type := "ref"]
-dt_date  <- res_date$dt[, Contrast_Type := "date"]
-dt_combo <- res_combos$dt[, Contrast_Type := "combo"]
+models_list  <- list()
+dt_list      <- list()
+
+# Dynamic detection of available results and appending them to the master lists
+if (!is.null(res_group) && !is.null(res_group$dt_ref)) {
+  models_list$ref <- res_group$dds
+  dt_list$ref     <- res_group$dt_ref[, Contrast_Type := "ref"]
+}
+
+if (!is.null(res_group) && !is.null(res_group$dt_combo)) {
+  models_list$combo <- res_group$dds
+  dt_list$combo     <- res_group$dt_combo[, Contrast_Type := "combo"]
+}
+
+if (!is.null(res_date) && !is.null(res_date$dt)) {
+  models_list$date <- res_date$dds
+  dt_list$date     <- res_date$dt[, Contrast_Type := "date"]
+}
+
+# 2. Annotate all result tables in dt_list with taxonomy BEFORE saving
+if (length(dt_list) > 0) {
+  taxo_ref <- load_taxonomy_table(TAXONOMY, SOURCE)
+  dt_list <- lapply(dt_list, annotate_with_taxonomy, taxo_ref = taxo_ref)
+}
 
 # 3. Compile EVERYTHING into the Master RDS file
 master_rds <- list(
-  models = list(
-    ref   = res_ref$dds,
-    date  = res_date$dds,
-    combo = res_combos$dds
-  ),
-  dt = list(
-    ref   = dt_ref,
-    date  = dt_date,
-    combo = dt_combo
-  )
+  models = models_list,
+  dt     = dt_list
 )
 saveRDS(master_rds, RDS)
 
-# 4. Compile and bind for the global Parquet output
-master_parquet <- rbindlist(list(dt_ref, dt_date, dt_combo), use.names = TRUE, fill = TRUE)
-write_parquet(master_parquet, PARQUET)
+# 4. Compile and bind for global Parquet output
+if (length(dt_list) > 0) {
+  master_parquet <- rbindlist(dt_list, use.names = TRUE, fill = TRUE)
+  write_parquet(master_parquet, PARQUET)
+} else {
+  warning("⚠️ No contrast results generated to write to Parquet.")
+}
 
 message("✅ Master RDS (Models + Stats) and Parquet files compiled successfully.")

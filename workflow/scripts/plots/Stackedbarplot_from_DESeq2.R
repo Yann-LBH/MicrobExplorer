@@ -67,6 +67,7 @@ if (is.list(master_rds_obj) && !is.null(master_rds_obj$dt)) {
   master_table <- as.data.table(master_rds_obj)
 }
 
+print(str(master_table))
 # 🟢 ADAPTATION : Standardisation du nom de la colonne d'identifiant
 if (!"Feature_ID" %in% names(master_table) && "KO_Number" %in% names(master_table)) {
   setnames(master_table, "KO_Number", "Feature_ID")

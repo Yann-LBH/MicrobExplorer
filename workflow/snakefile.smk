@@ -1,6 +1,8 @@
 import os
-import pandas as pd
+import csv
+#import pandas as pd
 from pathlib import Path
+from glob import glob
 
 
 # Dev sous Windows patch os.path.join
@@ -11,14 +13,17 @@ def pjoin(*args):
 
 configfile: "config/config.yaml"
 
-
 # ==========================================================================
 #   DICTIONARIES
 # ==========================================================================
 
-# Échantillons
-DATA = pd.read_table(config["samples_file"], index_col=0) #get the samples ID from the first column of the config file
-SAMPLES = DATA.index.tolist()
+# Parse sample IDs without importing pandas at parsing time
+with open(config["samples_file"], "r") as f:
+    reader = csv.reader(f, delimiter="\t")
+    next(reader)  # Skip header
+    SAMPLES = [row[0] for row in reader if row]
+#DATA = pd.read_table(config["samples_file"], index_col=0) #get the samples ID from the first column of the config file
+#SAMPLES = DATA.index.tolist()
 READS_FILES = {sample: f"{config['input_path']['data_raw']['reads']}reads_{sample}.kaijuNR" for sample in SAMPLES}
 CONTIGS_FILES = {sample: f"{config['input_path']['data_raw']['contigs']}count-contigs-coassembly-{sample}.tsv" for sample in SAMPLES}
 KEGG_FILES = f"{config['input_path']['data_raw']['kegg']}coassembly_bakta.gff3"
@@ -27,25 +32,49 @@ READS_TREATMENT = config["output_path"]["treatment"] + "reads/"
 CONTIGS_TREATMENT = config["output_path"]["treatment"] + "contigs/"
 KEGG_TREATMENT = config["output_path"]["treatment"] + "kegg/"
 
+TAXONOMY = {
+    "reads":config["input_path"]["taxonomy_ncbi"]["local_path"],
+    "contigs":config["input_path"]["taxonomy_megahit"]["converted"],
+    "kegg":config["input_path"]["pathway_bakta"]["local_path"]
+}
+
 TREATMENT_SOURCES = {
     "reads": expand(
-        READS_TREATMENT + "4.Annotated/annotated_{sample}_reads.tsv", sample=SAMPLES
+        READS_TREATMENT + "3.CPM/cpm_{sample}_reads.tsv", sample=SAMPLES
+    ),
+    "reads_deseq": expand(
+        READS_TREATMENT + "Matrix/Deseq/matrix_deseq_{sample}_reads.tsv", sample=SAMPLES
+    ),
+    "reads_phyloseq": expand(
+        READS_TREATMENT + "Matrix/Phyloseq/matrix_phyloseq_{sample}_reads.tsv", sample=SAMPLES
     ),
     "contigs": expand(
-        CONTIGS_TREATMENT + "6.Annotated/annotated_{sample}_contigs.tsv", sample=SAMPLES
+        CONTIGS_TREATMENT + "5.Union/union_{sample}_contigs.tsv", sample=SAMPLES
+    ),
+    "contigs_deseq": expand(
+        CONTIGS_TREATMENT + "Matrix/Deseq/matrix_deseq_{sample}_contigs.tsv", sample=SAMPLES
+    ),
+    "contigs_phyloseq": expand(
+        CONTIGS_TREATMENT + "Matrix/Phyloseq/matrix_phyloseq_{sample}_contigs.tsv", sample=SAMPLES
     ),
     "kegg": expand(
-        KEGG_TREATMENT + "6.Annotated/annotated_{sample}_kegg.tsv", sample=SAMPLES
+        KEGG_TREATMENT + "3.RPKM/rpkm_{sample}_kegg.tsv", sample=SAMPLES
+    ),
+    "kegg_deseq": expand(
+        KEGG_TREATMENT + "Matrix/Deseq/matrix_deseq_{sample}_kegg.tsv", sample=SAMPLES,
+    ),
+    "kegg_phyloseq": expand(
+        KEGG_TREATMENT + "Matrix/Phyloseq/matrix_phyloseq_{sample}_kegg.tsv", sample=SAMPLES,
     )
 }
 
 PARQUET_FILES = {
-    "stackedbarplot": glob.glob(pjoin(config["output_path"]["parquet"], "stackedbarplot", "*.parquet")),
-    "heatmap": glob.glob(pjoin(config["output_path"]["parquet"], "heatmap", "*.parquet")),
-    "pca": glob.glob(pjoin(config["output_path"]["parquet"], "pca", "*.parquet")),
-    "volcano": glob.glob(pjoin(config["output_path"]["parquet"], "volcano", "*.parquet")),
-    "physico": glob.glob(pjoin(config["output_path"]["parquet"], "physico", "*.parquet")),
-    "qc": glob.glob(pjoin(config["output_path"]["parquet"], "qc", "*.parquet"))
+    "stackedbarplot": glob(pjoin(config["output_path"]["parquet"], "stackedbarplot", "*.parquet")),
+    "heatmap": glob(pjoin(config["output_path"]["parquet"], "heatmap", "*.parquet")),
+    "pca": glob(pjoin(config["output_path"]["parquet"], "pca", "*.parquet")),
+    "volcano": glob(pjoin(config["output_path"]["parquet"], "volcano", "*.parquet")),
+    "physico": glob(pjoin(config["output_path"]["parquet"], "physico", "*.parquet")),
+    "qc": glob(pjoin(config["output_path"]["parquet"], "qc", "*.parquet"))
 }
 
 QC_STEPS = {
@@ -55,8 +84,7 @@ QC_STEPS = {
         # Treatment output paths
         "counted": (pjoin(config["output_path"]["treatment"], "reads", "1.Counted"), "counted_{sample}_reads.tsv"),
         "filtered": (pjoin(config["output_path"]["treatment"], "reads", "2.Filtered"), "filtered_{sample}_reads.tsv"),
-        "cpm": (pjoin(config["output_path"]["treatment"], "reads", "3.CPM"), "cpm_{sample}_reads.tsv"),
-        "final": (pjoin(config["output_path"]["treatment"], "reads", "4.Annotated"), "annotated_{sample}_reads.tsv"),
+        "cpm": (pjoin(config["output_path"]["treatment"], "reads", "3.CPM"), "cpm_{sample}_reads.tsv")
     },
     "contigs": {
         # Raw data path
@@ -67,7 +95,8 @@ QC_STEPS = {
         "rpkm": (pjoin(config["output_path"]["treatment"], "contigs", "3.RPKM"), "rpkm_{sample}_contigs.tsv"),
         "rpkm_filtered": (pjoin(config["output_path"]["treatment"], "contigs", "4.RPKM_Filtered"), "rpkm_filtered_{sample}_contigs.tsv"),
         "union": (pjoin(config["output_path"]["treatment"], "contigs", "5.Union"), "union_{sample}_contigs.tsv"),
-        "final": (pjoin(config["output_path"]["treatment"], "contigs", "6.Annotated"), "annotated_{sample}_contigs.tsv"),
+        "matrix_deseq": (pjoin(config["output_path"]["treatment"], "contigs", "Matrix", "Deseq"), "matrix_deseq_{sample}_contigs.tsv"),
+        "matrix_phyloseq": (pjoin(config["output_path"]["treatment"], "contigs", "Matrix", "Phyloseq"), "matrix_phyloseq_{sample}_contigs.tsv")
     },
     "kegg": {
         # Raw annotations or input files
@@ -78,15 +107,15 @@ QC_STEPS = {
         "rpkm": (pjoin(config["output_path"]["treatment"], "kegg", "3.RPKM"), "rpkm_{sample}_kegg.tsv"),
         "standardized": (pjoin(config["output_path"]["treatment"], "kegg", "4.Standardized"), "standardized_{sample}_kegg.tsv"),
         "aggregated": (pjoin(config["output_path"]["treatment"], "kegg", "5.Aggregated"), "stand_aggreg_{sample}_kegg.tsv"),
-        "annotated": (pjoin(config["output_path"]["treatment"], "kegg", "6.Annotated"), "annotated_{sample}_kegg.tsv"),
+        "matrix_deseq": (pjoin(config["output_path"]["treatment"], "kegg", "Matrix", "Deseq"), "matrix_deseq_{sample}_kegg.tsv"),
+        "matrix_phyloseq": (pjoin(config["output_path"]["treatment"], "kegg", "Matrix", "Phyloseq"), "matrix_phyloseq_{sample}_kegg.tsv")
     },
 }
 
 PLOT_PARAMS = {
     "reads": {"stand_col": "cpm", "label": "cpm"},
     "contigs": {"stand_col": "rpkm", "label": "rpkm"},
-    "kegg_rpkm": {"stand_col": "rpkm", "label": "rpkm"},
-    "kegg_stand": {"stand_col": "standardization", "label": "standardization"},
+    "kegg": {"stand_col": "rpkm", "label": "rpkm"},
 }
 
 
@@ -95,7 +124,7 @@ PLOT_PARAMS = {
 # ==========================================================================
 def filter_active_sources(sources_list):
     """Filters the list of data sources (reads, contigs, kegg) based on active run_xxx flags."""
-    # Une seule ligne de compréhension de liste remplace tout le bloc if/elif
+
     return [source for source in sources_list if config.get(f"run_{source}", False)]
 
 
@@ -146,42 +175,71 @@ def get_targets():
     targets = []
 
     # --- Taxonomy ---
-    if config["run_taxonomy"]:
-        targets.extend(
-            [
+    if config.get("run_taxonomy", False):
+        targets.extend([
                 config["input_path"]["taxonomy_ncbi"]["local_path"],
+                config["input_path"]["taxonomy_megahit"]["converted"],
                 config["input_path"]["pathway_bakta"]["local_path"],
-            ]
-        )
+        ])
 
     # --- Reads ---
-    if config["run_reads"]:
-        targets.extend(
-            expand(
-                READS_TREATMENT + "4.Annotated/annotated_{sample}_reads.tsv",
-                sample=SAMPLES,
-            )
-        )
+    if config.get("run_reads", False):
+        targets.extend(TREATMENT_SOURCES["reads"])
 
     # --- Contigs ---
-    if config["run_contigs"]:
-        targets.extend(
-            expand(
-                CONTIGS_TREATMENT + "6.Annotated/annotated_{sample}_contigs.tsv",
-                sample=SAMPLES,
-            )
-        )
+    if config.get("run_contigs", False):
+        targets.extend(TREATMENT_SOURCES["contigs"])
+        targets.extend(TREATMENT_SOURCES["contigs_deseq"])
+        targets.extend(TREATMENT_SOURCES["contigs_phyloseq"])
 
-    if config["run_kegg"]:
-        targets.extend(
-            expand(
-                KEGG_TREATMENT + "6.Annotated/annotated_{sample}_kegg.tsv",
-                sample=SAMPLES,
-            )
-        )
+    if config.get("run_kegg", False):
+        targets.extend(TREATMENT_SOURCES["kegg"])
+        targets.extend(TREATMENT_SOURCES["kegg_deseq"])
+        targets.extend(TREATMENT_SOURCES["kegg_phyloseq"])
 
     # --- Plots ---
-    if config["run_plots"]:
+    if config.get("run_plots", False):
+        # Stackedbarplots standard
+        for mode, sources in config["datatypes"]["stackedbarplot"]["standard"].items():
+            active_sources = filter_active_sources(sources)
+            targets.extend(
+                expand(
+                    [
+                        pjoin(
+                            config["output_path"]["plots"],
+                            "stackedbarplot",
+                            "{mode}",
+                            "Stackedbarplot_{mode}_{source}.pdf",
+                        ),
+                        pjoin(
+                            config["output_path"]["parquet"],
+                            "stackedbarplot",
+                            "stackedbarplot_{mode}_{source}.parquet",
+                        ),
+                    ],
+                        mode=mode,
+                        source=active_sources,
+                )
+            )
+        # Stackedbarplots DESeq2
+        targets += deseq2(
+            pjoin(
+                config["output_path"]["plots"],
+                "stackedbarplot",
+                "deseq2",
+                "Stackedbarplot_deseq2_{source}.pdf",
+            ),
+            "deseq2",
+        )
+        targets += deseq2(
+            pjoin(
+                config["output_path"]["parquet"],
+                "stackedbarplot",
+                "stackedbarplot_deseq2_{source}.parquet",
+            ),
+            "deseq2",
+        )
+
         # Heatmap
         targets += phyloseq(
             pjoin(
@@ -230,59 +288,8 @@ def get_targets():
             "volcano",
         )
 
-        # Stackedbarplots standard
-        for mode, sources in config["datatypes"]["stackedbarplot"]["standard"].items():
-            active_sources = filter_active_sources(sources)
-            targets += extend(
-                expand(
-                    [
-                        pjoin(
-                            config["output_path"]["plots"],
-                            "stackedbarplot",
-                            "{mode}",
-                            "Stackedbarplot_" + "{mode}_{source}.pdf",
-                        ),
-                        mode=mode,
-                        source=active_sources,
-                        pjoin(
-                            config["output_path"]["plots"],
-                            "stackedbarplot",
-                            "Stackedbarplot_" + "{mode}_{source}.parquet",
-                        ),
-                        mode=mode,
-                        source=active_sources,
-                    ]
-                )
-            )
-
-        # Stackedbarplots DESeq2
-        targets += deseq2(
-            pjoin(
-                config["output_path"]["plots"],
-                "stackedbarplot",
-                "deseq2",
-                "Stackedbarplot_deseq2_{source}.pdf",
-            ),
-            "deseq2",
-        )
-        targets += deseq2(
-            pjoin(
-                config["output_path"]["parquet"],
-                "stackedbarplot",
-                "stackedbarplot_deseq2_{source}.parquet",
-            ),
-            "deseq2",
-        )
-
-    # --- Phyloseq ---
-    if config["run_phyloseq"]:
-        targets += phyloseq(
-            pjoin(config["output_path"]["rds"], "{source}", "phyloseq_{source}.rds"),
-            "phyloseq",
-        )
-
     # --- DESeq2 ---
-    if config["run_deseq2"]:
+    if config.get("run_deseq2", False):
         targets += deseq2(
             pjoin(config["output_path"]["rds"], "{source}", "deseq2_{source}.rds"),
             "deseq2",
@@ -294,17 +301,24 @@ def get_targets():
             "deseq2",
         )
 
-    if config["run_physico"]:
+    # --- Phyloseq ---
+    if config.get("run_phyloseq", False):
+        targets += phyloseq(
+            pjoin(config["output_path"]["rds"], "{source}", "phyloseq_{source}.rds"),
+            "phyloseq",
+        )
+
+    if config.get("run_physico", False):
         targets.extend(
             expand(
                 [
-                    pjoin(config["output_path"]["plots"], "physico", "Physico_plots.pdf"),
-                    pjoin(config["output_path"]["parquet"], "physico", "physico_plots.parquet"),
+                    pjoin(config["output_path"]["plots"], "physico", "Physico_plot.pdf"),
+                    pjoin(config["output_path"]["parquet"], "physico", "physico_plot.parquet"),
                 ]
             )
         )
     # --- QC ---
-    if config["run_qc"]:
+    if config.get("run_qc", False):
         datatypes = list(QC_STEPS.keys())
         active_qc_dt = filter_active_sources(datatypes)
         active_qc_dt = [
@@ -330,22 +344,32 @@ def get_targets():
                 )
             )
 
-    return targets
-
+#    if config.get("run_shiny", False):       
+#        targets.extend(
+#            expand(
+#                [
+#                    pjoin(config["output_path"]["parquet"], "shiny_stackedbarplot.parquet"),
+#                    pjoin(config["output_path"]["parquet"], "shiny_heatmap.parquet"),
+#                    pjoin(config["output_path"]["parquet"], "shiny_pca.parquet"),
+#                    pjoin(config["output_path"]["parquet"], "shiny_volcano.parquet"),
+#                    pjoin(config["output_path"]["parquet"], "shiny_physico.parquet"),
+#                    pjoin(config["output_path"]["parquet"], "shiny_qc.parquet")
+#                ]
+#            )
+#        )
 
 rule all:
     input:
-        config["output_path"]["audit"],
+        #config["output_path"]["audit"],
+        "benchmarks/summary_benchmarks.csv"
         get_targets(),
-
-
 # ==========================================================================
 # UTILS — Taxonomy and input_pathways
 # ==========================================================================
 rule download_taxonomy:
     output:
         zip=temp("data/taxonomy/new_taxdump.zip"),
-        taxonomy=config["input_path"]["taxonomy_ncbi"]["local_path"]
+        taxonomy=TAXONOMY["reads"]
     conda:
         "envs/py_env.yaml"
     params:
@@ -356,10 +380,21 @@ rule download_taxonomy:
             "workflow/scripts/utils/utils_convert_NCBInames_to_TaxaTable.py"
         )
 
+rule convert_megahit_taxonomy:
+    input:
+        megahit=config["input_path"]["taxonomy_megahit"]["original"]
+    output:
+        taxonomy=TAXONOMY["contigs"]
+    conda:
+        "envs/py_env.yaml"
+    script:
+        os.path.abspath(
+            "workflow/scripts/utils/utils_format_MegahitTable.py"
+        )
 
 rule download_pathway:
     output:
-        tsv=config["input_path"]["pathway_bakta"]["local_path"]
+        pathway=TAXONOMY["kegg"]
     conda:
         "envs/py_env.yaml"
     params:
@@ -396,6 +431,7 @@ rule run_plot_qc:
     conda:
         "envs/r_env.yaml"
     params:
+        steps_config=lambda w: QC_STEPS[w.source],
         active_modules=filter_active_sources(config["datatypes"]["qc"])
     script:
         os.path.abspath("workflow/scripts/utils/utils_barplot_qc.R")
@@ -411,6 +447,12 @@ rule reads_counting:
         raw_data=lambda w: READS_FILES[w.sample]
     output:
         counted=READS_TREATMENT + "1.Counted/counted_{sample}_reads.tsv"
+    benchmark:
+        "benchmarks/reads/{sample}_counted.tsv"
+    #threads: 4
+    #resources:
+        #mem_mb=8000,       # 8 Go de RAM
+        #runtime=60         # 60 minutes max (utile pour SLURM/SGE)
     conda:
         "envs/py_env.yaml"
     script:
@@ -422,6 +464,8 @@ rule reads_filter:
         data=READS_TREATMENT + "1.Counted/counted_{sample}_reads.tsv"
     output:
         filtered=READS_TREATMENT + "2.Filtered/filtered_{sample}_reads.tsv"
+    benchmark:
+        "benchmarks/reads/{sample}_filtered.tsv"
     conda:
         "envs/py_env.yaml"
     params:
@@ -435,25 +479,12 @@ rule reads_CPM:
         data=READS_TREATMENT + "2.Filtered/filtered_{sample}_reads.tsv"
     output:
         cpm=READS_TREATMENT + "3.CPM/cpm_{sample}_reads.tsv"
+    benchmark:
+        "benchmarks/reads/{sample}_cpm.tsv"
     conda:
         "envs/py_env.yaml"
     script:
         os.path.abspath("workflow/scripts/reads/03_Reads_CPM.py")
-
-
-rule reads_add_taxaname:
-    input:
-        data=READS_TREATMENT + "3.CPM/cpm_{sample}_reads.tsv",
-        taxonomy=config["input_path"]["taxonomy_ncbi"]["local_path"]
-    output:
-        taxaname=READS_TREATMENT + "4.Annotated/annotated_{sample}_reads.tsv"
-    conda:
-        "envs/py_env.yaml"
-    params:
-        top_n=config["reads"]["top_n"],
-        noise=config["reads"]["noise"]
-    script:
-        os.path.abspath("workflow/scripts/reads/04_Reads_add_taxaname.py")
 
 
 # ==========================================================================
@@ -466,6 +497,8 @@ rule contigs_counting:
         raw_data=lambda w: CONTIGS_FILES[w.sample]
     output:
         counted=CONTIGS_TREATMENT + "1.Counted/counted_{sample}_contigs.tsv"
+    benchmark:
+        "benchmarks/contigs/{sample}_counted.tsv"
     conda:
         "envs/py_env.yaml"
     params:
@@ -483,6 +516,8 @@ rule contigs_global_abundance:
         )
     output:
         global_abundance=CONTIGS_TREATMENT + "2.Global_Abundance/global_abundance_contigs.tsv"
+    benchmark:
+        "benchmarks/contigs/{sample}_global_abundance.tsv"
     conda:
         "envs/py_env.yaml"
     script:
@@ -495,6 +530,8 @@ rule contigs_filter:
         global_abundance=CONTIGS_TREATMENT + "2.Global_Abundance/global_abundance_contigs.tsv"
     output:
         filtered=CONTIGS_TREATMENT + "2.Filtered/filtered_{sample}_contigs.tsv"
+    benchmark:
+        "benchmarks/contigs/{sample}_filtered.tsv"
     conda:
         "envs/py_env.yaml"
     params:
@@ -508,6 +545,8 @@ rule contigs_rpkm:
         data=CONTIGS_TREATMENT + "1.Counted/counted_{sample}_contigs.tsv"
     output:
         rpkm=CONTIGS_TREATMENT + "3.RPKM/rpkm_{sample}_contigs.tsv"
+    benchmark:
+        "benchmarks/contigs/{sample}_rpkm.tsv"
     conda:
         "envs/py_env.yaml"
     script:
@@ -520,6 +559,8 @@ rule contigs_rpkm_filter:
     output:
         rpkm_filtered=CONTIGS_TREATMENT
         + "4.RPKM_Filtered/rpkm_filtered_{sample}_contigs.tsv"
+    benchmark:
+        "benchmarks/contigs/{sample}_rpkm_filtered.tsv"
     conda:
         "envs/py_env.yaml"
     params:
@@ -530,28 +571,32 @@ rule contigs_rpkm_filter:
 
 rule contigs_union:
     input:
-        data_source=CONTIGS_TREATMENT + "3.RPKM/rpkm_{sample}_contigs.tsv",
+        data=CONTIGS_TREATMENT + "3.RPKM/rpkm_{sample}_contigs.tsv",
         abundance=CONTIGS_TREATMENT + "2.Filtered/filtered_{sample}_contigs.tsv",
         rpkm_filtered=CONTIGS_TREATMENT
         + "4.RPKM_Filtered/rpkm_filtered_{sample}_contigs.tsv"
     output:
         union=CONTIGS_TREATMENT + "5.Union/union_{sample}_contigs.tsv"
+    benchmark:
+        "benchmarks/contigs/{sample}_union.tsv"
     conda:
         "envs/py_env.yaml"
     script:
         os.path.abspath("workflow/scripts/contigs/05_Contigs_union_filtered.py")
 
 
-rule contigs_add_taxaname:
+rule contigs_create_matrix:
     input:
-        data=CONTIGS_TREATMENT + "5.Union/union_{sample}_contigs.tsv",
-        taxonomy=config["input_path"]["taxonomy_megahit"]
+        data=CONTIGS_TREATMENT + "5.Union/union_{sample}_contigs.tsv"
     output:
-        taxaname=CONTIGS_TREATMENT + "6.Annotated/annotated_{sample}_contigs.tsv"
+        matrix_deseq=CONTIGS_TREATMENT + "Matrix/Deseq/matrix_deseq_{sample}_contigs.tsv",
+        matrix_phyloseq=CONTIGS_TREATMENT + "Matrix/Phyloseq/matrix_phyloseq_{sample}_contigs.tsv"
+    benchmark:
+        "benchmarks/contigs/{sample}_create_matrix.tsv"
     conda:
         "envs/py_env.yaml"
     script:
-        os.path.abspath("workflow/scripts/contigs/06_Contigs_add_taxaname.py")
+        os.path.abspath("workflow/scripts/contigs/06_Contigs_create_matrix.py")
 
 
 # ==========================================================================
@@ -564,6 +609,8 @@ rule kegg_extraction:
         raw_data=KEGG_FILES
     output:
         extracted=KEGG_TREATMENT + "1.Extracted/extracted_{sample}_kegg.tsv"
+    benchmark:
+        "benchmarks/kegg/{sample}_extraction.tsv"
     conda:
         "envs/py_env.yaml"
     script:
@@ -575,11 +622,14 @@ rule kegg_intersec_count:
         data=KEGG_TREATMENT + "1.Extracted/extracted_{sample}_kegg.tsv",
         counted=CONTIGS_TREATMENT + "1.Counted/counted_{sample}_contigs.tsv"
     output:
-        intersec=KEGG_TREATMENT + "2.Intersected/intersected_{sample}_kegg.tsv"
+        intersec=KEGG_TREATMENT + "2.Intersected/intersected_{sample}_kegg.tsv",
+        matrix_deseq=KEGG_TREATMENT + "Matrix/Deseq/matrix_deseq_{sample}_kegg.tsv"
+    benchmark:
+        "benchmarks/kegg/{sample}_intersec_count.tsv"
     conda:
         "envs/py_env.yaml"
     script:
-        os.path.abspath("workflow/scripts/kegg/02_Kegg_count_intersection.py")
+        os.path.abspath("workflow/scripts/kegg/02_Kegg_count_intersec_and_aggregate.py")
 
 
 rule kegg_rpkm:
@@ -587,44 +637,13 @@ rule kegg_rpkm:
         data=KEGG_TREATMENT + "2.Intersected/intersected_{sample}_kegg.tsv"
     output:
         rpkm=KEGG_TREATMENT + "3.RPKM/rpkm_{sample}_kegg.tsv"
+        matrix_phyloseq=KEGG_TREATMENT + "Matrix/Phyloseq/matrix_phyloseq_{sample}_kegg.tsv"
+    benchmark:
+        "benchmarks/kegg/{sample}_rpkm.tsv"
     conda:
         "envs/py_env.yaml"
     script:
-        os.path.abspath("workflow/scripts/kegg/03_Kegg_RPKM.py")
-
-
-rule kegg_standardization:
-    input:
-        data=KEGG_TREATMENT + "3.RPKM/rpkm_{sample}_kegg.tsv"
-    output:
-        stand=KEGG_TREATMENT + "4.Standardized/standardized_{sample}_kegg.tsv"
-    conda:
-        "envs/py_env.yaml"
-    script:
-        os.path.abspath("workflow/scripts/kegg/04_Kegg_standardization.py")
-
-
-rule kegg_standardization_agregation:
-    input:
-        data=KEGG_TREATMENT + "4.Standardized/standardized_{sample}_kegg.tsv"
-    output:
-        agreg=KEGG_TREATMENT + "5.Aggregated/stand_aggreg_{sample}_kegg.tsv"
-    conda:
-        "envs/py_env.yaml"
-    script:
-        os.path.abspath("workflow/scripts/kegg/05_Kegg_standardization_aggregation.py")
-
-
-rule kegg_merge_input_pathway_levels:
-    input:
-        data=KEGG_TREATMENT + "5.Aggregated/stand_aggreg_{sample}_kegg.tsv",
-        pathway=config["input_path"]["pathway_bakta"]["local_path"]
-    output:
-        taxaname=KEGG_TREATMENT + "6.Annotated/annotated_{sample}_kegg.tsv"
-    conda:
-        "envs/py_env.yaml"
-    script:
-        os.path.abspath("workflow/scripts/kegg/06_Kegg_merge_pathway_levels.py")
+        os.path.abspath("workflow/scripts/kegg/03_Kegg_RPKM_and_aggregate.py")
 
 
 # ==========================================================================
@@ -635,7 +654,9 @@ rule kegg_merge_input_pathway_levels:
 rule plot_stackedbarplot:
     input:
         data=get_graphs_input,
-        metadata=config["input_path"]["metadata"]
+        metadata=config["input_path"]["metadata"],
+        taxonomy=lambda w: TAXONOMY[w.source],
+        title_resolver = config["title_resolver"]
     output:
         pdf=pjoin(
             config["output_path"]["plots"],
@@ -649,14 +670,13 @@ rule plot_stackedbarplot:
             "stackedbarplot_{mode}_{source}.parquet",
         )
     wildcard_constraints:
-        # Empêche les wildcards {mode} de capturer le mot "deseq2"
-        source="(?!kegg_stand)[a-zA-Z0-9_]+",
+        # Prevents the {mode} and {source} wildcards from matching the word “deseq2” and “kegg_stand”
+        mode = "(?!deseq2)[a-zA-Z0-9_]+",
     conda:
         "envs/r_env.yaml"
     params:
+        language=config["language"],
         shared=config["plots"]["shared"],
-        title=lambda w: config["plots"]["stackedbarplot"]["title"],
-        subtitle=lambda w: config["plots"]["stackedbarplot"]["subtitle"],
         mode=lambda w: w.mode,
         top_n=config["plots"]["stackedbarplot"]["top_n"],
         stand_col=lambda w: PLOT_PARAMS[w.source]["stand_col"],
@@ -706,8 +726,7 @@ rule plot_heatmap:
         phyloseq_obj=pjoin(
             config["output_path"]["rds"], "{source}", "phyloseq_{source}.rds"
         ),
-        data=get_graphs_input,
-        metadata=config["input_path"]["metadata"]
+        title_resolver = config["title_resolver"]
     output:
         pdf=pjoin(
             config["output_path"]["plots"],
@@ -719,9 +738,8 @@ rule plot_heatmap:
     conda:
         "envs/r_env.yaml"
     params:
+        language=config["language"],
         shared=config["plots"]["shared"],
-        title=lambda w: config["plots"]["heatmap"]["title"],
-        subtitle=lambda w: config["plots"]["heatmap"]["subtitle"],
         top_n=config["plots"]["heatmap"]["top_n"],
         clust_method=config["plots"]["heatmap"]["clust_method"],
         distance_method=config["plots"]["heatmap"]["distance_method"],
@@ -735,6 +753,8 @@ rule plot_pca:
         data=get_graphs_input,
         metadata=config["input_path"]["metadata"],
         physico=config["input_path"]["physico_params"],
+        taxonomy=lambda w: TAXONOMY[w.source],
+        title_resolver = config["title_resolver"]
     output:
         pdf=pjoin(config["output_path"]["plots"], "pca", "PCA_{source}.pdf"),
         parquet=pjoin(config["output_path"]["parquet"], "pca", "pca_{source}.parquet"),
@@ -742,13 +762,15 @@ rule plot_pca:
     conda:
         "envs/r_env.yaml"
     params:
+        language=config["language"],
         shared=config["plots"]["shared"],
         title=lambda w: config["plots"]["pca"]["title"],
         subtitle=lambda w: config["plots"]["pca"]["subtitle"],
         top_n=config["plots"]["pca"]["top_n"],
         dim_x=config["plots"]["pca"]["dim_x"],
         dim_y=config["plots"]["pca"]["dim_y"],
-        physico_cols=config["plots"]["pca"]["physico_cols"],
+        physico_col=config["plots"]["pca"]["physico_col"],
+        stand_col=lambda w: PLOT_PARAMS[w.source]["stand_col"],
         point_size=config["plots"]["pca"]["point_size"],
         rank=lambda w: config["plots"]["shared"]["rank"][w.source],
     script:
@@ -794,9 +816,9 @@ rule plot_physico:
     input:
         physico_params=config["input_path"]["physico_params"]
     output:
-        pdf=pjoin(config["output_path"]["plots"], "physico", "Physico_plots.pdf"),
+        pdf=pjoin(config["output_path"]["plots"], "physico", "Physico_plot.pdf"),
         parquet=pjoin(
-            config["output_path"]["parquet"], "physico", "physico_data.parquet"
+            config["output_path"]["parquet"], "physico", "physico_plot.parquet"
         )
     conda:
         "envs/r_env.yaml"
@@ -808,11 +830,32 @@ rule plot_physico:
 # DESEQ2 + PHYLOSEQ
 # ==========================================================================
 
+rule run_deseq2:
+    input:
+        data=lambda w: TREATMENT_SOURCES[f"{w.source}_deseq"],
+        metadata=config["input_path"]["metadata"],
+        taxonomy=lambda w: TAXONOMY[w.source],
+    output:
+        rds=pjoin(config["output_path"]["rds"], "{source}", "deseq2_{source}.rds"),
+        parquet=pjoin(config["output_path"]["parquet"], "deseq2", "deseq2_{source}.parquet")
+    conda:
+        "envs/r_env.yaml"
+    params:
+        contrast=config["deseq2"]["contrast"],
+        ref=config["deseq2"]["ref"],
+        sizefactor=config["deseq2"]["sizefactor"],
+        test=config["deseq2"]["test"],
+        fittype=config["deseq2"]["fittype"],
+    script:
+        os.path.abspath("workflow/scripts/analysis/DESeq2.R")
+
+
 
 rule run_phyloseq:
     input:
-        data=lambda w: TREATMENT_SOURCES[w.source],
-        metadata=config["input_path"]["metadata"]
+        data=lambda w: TREATMENT_SOURCES[f"{w.source}_phyloseq"],
+        metadata=config["input_path"]["metadata"],
+        taxonomy=lambda w: TAXONOMY[w.source],
     output:
         rds=pjoin(config["output_path"]["rds"], "{source}", "phyloseq_{source}.rds")
     params:
@@ -823,47 +866,66 @@ rule run_phyloseq:
         os.path.abspath("workflow/scripts/analysis/Phyloseq.R")
 
 
-rule run_deseq2:
-    input:
-        data=lambda w: TREATMENT_SOURCES[w.source],
-        metadata=config["input_path"]["metadata"]
-    output:
-        rds=pjoin(config["output_path"]["rds"], "{source}", "deseq2_{source}.rds"),
-        parquet=pjoin(config["output_path"]["parquet"], "deseq2", "deseq2_{source}.parquet")
-    conda:
-        "envs/r_env.yaml"
-    params:
-        contrast=config["deseq2"]["contrast"],
-        ref=config["deseq2"]["ref"]
-    script:
-        os.path.abspath("workflow/scripts/analysis/DESeq2.R")
-
 # ==========================================================================
 # SHINY MASTER PARQUET by Analyse
 # ==========================================================================
 
-rule shiny_master_parquet:
-    input:
-        stackedbarplot = PARQUET_FILES["stackedbarplot"],
-        heatmap        = PARQUET_FILES["heatmap"],
-        pca            = PARQUET_FILES["pca"],
-        volcano        = PARQUET_FILES["volcano"],
-        physico        = PARQUET_FILES["physico"],
-        qc             = PARQUET_FILES["qc"]
-    output:
-        stackedbarplot = pjoin(config["output_path"]["parquet"], "shiny_stackedbarplot.parquet"),
-        heatmap        = pjoin(config["output_path"]["parquet"], "shiny_heatmap.parquet"),
-        pca            = pjoin(config["output_path"]["parquet"], "shiny_pca.parquet"),
-        volcano        = pjoin(config["output_path"]["parquet"], "shiny_volcano.parquet"),
-        physico        = pjoin(config["output_path"]["parquet"], "shiny_physico.parquet"),
-        qc             = pjoin(config["output_path"]["parquet"], "shiny_qc.parquet")
-    conda:
-        "envs/py_env.yaml"
-    script:
-        os.path.abspath("workflow/scripts/utils/utils_shiny_master_parquet.R")
+#rule shiny_master_parquet:
+#    input:
+#        stackedbarplot = PARQUET_FILES["stackedbarplot"],
+#        heatmap        = PARQUET_FILES["heatmap"],
+#        pca            = PARQUET_FILES["pca"],
+#        volcano        = PARQUET_FILES["volcano"],
+#        physico        = PARQUET_FILES["physico"],
+#        qc             = PARQUET_FILES["qc"]
+#    output:
+#        stackedbarplot = pjoin(config["output_path"]["parquet"], "shiny_stackedbarplot.parquet"),
+#        heatmap        = pjoin(config["output_path"]["parquet"], "shiny_heatmap.parquet"),
+#        pca            = pjoin(config["output_path"]["parquet"], "shiny_pca.parquet"),
+#        volcano        = pjoin(config["output_path"]["parquet"], "shiny_volcano.parquet"),
+#        physico        = pjoin(config["output_path"]["parquet"], "shiny_physico.parquet"),
+#        qc             = pjoin(config["output_path"]["parquet"], "shiny_qc.parquet")
+#    conda:
+#        "envs/py_env.yaml"
+#    script:
+#        os.path.abspath("workflow/scripts/utils/utils_shiny_master_parquet.py")
 
+# ==========================================================================
+# Benchmarks stats
+# ==========================================================================
+
+
+rule aggregate_benchmarks:
+    input:
+        reads=expand("benchmarks/reads/{sample}_counting.tsv", sample=SAMPLES),
+        contigs=expand("benchmarks/contigs/{sample}_counting.tsv", sample=SAMPLES),
+        kegg=expand("benchmarks/kegg/{sample}_extraction.tsv", sample=SAMPLES)
+    output:
+        csv="benchmarks/summary_benchmarks.csv"
+    run:
+        import pandas as pd
+        from pathlib import Path
+
+        records = []
+        for file_path in input:
+            path = Path(file_path)
+            df = pd.read_csv(path, sep="\t")
+            
+            # Extract metadata from file structure
+            df["rule"] = path.parent.name
+            df["sample"] = path.stem.replace("_counting", "")
+            records.append(df)
+
+        # Combine all benchmark data into a single dataframe
+        summary_df = pd.concat(records, ignore_index=True)
+        
+        # Reorder key columns first
+        primary_cols = ["rule", "sample", "s", "h:m:s", "max_rss", "cpu_time"]
+        other_cols = [c for c in summary_df.columns if c not in primary_cols]
+        summary_df[primary_cols + other_cols].to_csv(output.csv, index=False)
 # ==========================================================================
 # AUDIT
 # ==========================================================================
 
+ACTIVE_SOURCES = filter_active_sources(["reads", "contigs", "kegg"])
 include: "audit/audit.smk"

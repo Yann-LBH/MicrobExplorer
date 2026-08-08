@@ -29,6 +29,7 @@ dependencies:
   - r-readr
   - r-ggrastr
   - r-glue
+  - r-shiny.i18n
 
   # Bioconductor Packages
   - bioconductor-deseq2

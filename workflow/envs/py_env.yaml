@@ -3,8 +3,8 @@ channels:
   - bioconda
 dependencies:
   - python=3.11
-  - pandas=2.2
+  - pandas
   - numpy
-  - requests=2.34.2
-  - pyarrow=24.0
+  - requests
+  - pyarrow
   - polars

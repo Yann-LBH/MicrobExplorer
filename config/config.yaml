@@ -6,10 +6,9 @@
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 #
 # extensions used for input:
-#  reads: ".txt"       #".kaijuNR"
-#  contigs: ".txt"       #".tsv"
-#  bakta: ".txt"       #".gff3"
-#  plot: ".pdf"
+#  reads: kaijuNR
+#  contigs: tsv
+#  bakta: gff3
 # ==========================================================================
 
 # ==========================================================================
@@ -25,17 +24,18 @@ run_taxonomy:     True
 run_reads:        True
 run_contigs:      True
 run_kegg:         True
-run_plots:        True
-run_deseq2:       True
-run_phyloseq:     True
-run_pca:          True
-run_physico:      True
-run_qc:           True
+run_plots:        False
+run_deseq2:       False
+run_phyloseq:     False
+run_pca:          False
+run_physico:      False
+run_qc:           False
+run_shiny:        False
 
 # DATA TYPES CONFIGURATION
 
 datatypes:
-  phyloseq: ["reads","contigs","kegg"]
+  phyloseq: ["reads","contigs", "kegg"]
   deseq2: ["contigs", "kegg"]
   stackedbarplot:
     standard:
@@ -44,7 +44,7 @@ datatypes:
       absolute_global: ["reads", "contigs"]
     deseq2:    ["contigs", "kegg"]
   heatmap: ["reads", "contigs", "kegg"]
-  volcano: ["contigs", "kegg"]
+  volcano: ["contigs", "kegg"] #k
   pca: ["reads", "contigs", "kegg"]
   qc: ["reads", "contigs", "kegg"]
 
@@ -53,7 +53,6 @@ datatypes:
 
 reads:
   count_threshold: 10
-  top_n: 50
   noise: 
     - "root"
     - "cellular organisms"
@@ -85,6 +84,9 @@ kegg:
 deseq2:
   contrast: ["ref", "date", "combo"]  # Options: "ref", "date", "combo"
   ref: "TD1" # enter your key ref, it will use all sample with this key as ref
+  sizefactor: "poscounts" # Options: "poscounts", "ratio", "iterate"
+  test: "Wald" # Options: "Wald", "LRT"
+  fittype: "parametric" # Options: "parametric", "local", "mean"
 
 
 # GRAPHIC PARAMETERS
@@ -94,14 +96,14 @@ plots:
   shared:
     theme: "theme_minimal"
     palette: "turbo"
-    pdf_size: [10, 8] # [width, height]
+    pdf_size: [12, 10] # [width, height]
     title_size: 12
     subtitle_size: 10
-    legend_size: 10
-    axes_size: 10
+    legend_size: 12
+    axes_size: 12
     rank:
-      reads: "species" #eg : "phylum", class", "order", "family", "genus", "species"
-      contigs: "sepcies" #eg : "phylum", class", "order", "family", "genus", "species"
+      reads: "species" #eg : "domain", "kingdom", "phylum", class", "order", "family", "genus", "species"
+      contigs: "species" #eg : "domain", "phylum", class", "order", "family", "genus", "species"
       kegg: "level_3" #eg : "level_1", "level_2", "level_3", "gene_description"
 
 # Plots
@@ -109,8 +111,6 @@ plots:
     top_n: 19
 
   stackedbarplot:
-    title: "{source} | Abundance of the top {top_n} {feature_type} in each sample"
-    subtitle: "Mode : {mode} | Metric: {stand_col} | {rank}"
     top_n: 10
 
   stackedbarplot_deseq2:
@@ -134,7 +134,7 @@ plots:
     top_n: 10
     dim_x: 1
     dim_y: 2
-    physico_cols: "pH" # use any parameters from the physico_parameters file
+    physico_col: "pH" # use any parameters from the physico_parameters file
     point_size: 2
 
   volcano:
@@ -149,6 +149,7 @@ plots:
 # DATA PATH - Do not modify
 # ==========================================================================
 samples_file: "config/samples.tsv"
+title_resolver: "config/title.json"
 
 input_path:
   data_raw: 
@@ -160,7 +161,9 @@ input_path:
     zip_url: "https://ftp.ncbi.nlm.nih.gov/pub/taxonomy/new_taxdump/new_taxdump.zip"
     dmp_name: "data/taxonomy_ncbi/new_taxdump.zip/rankedlineage.dmp"
     local_path: "data/taxonomy_ncbi/taxaname.tsv"
-  taxonomy_megahit: "data/taxonomy_megahit/contigs_coassembly-taxNames.tsv"
+  taxonomy_megahit:
+    original: "data/taxonomy_megahit/contigs_coassembly-taxNames.tsv"
+    converted: "data/taxonomy_megahit/taxaname.tsv"
   pathway_bakta: 
     url : "https://rest.kegg.jp/get/br:ko00001"
     local_path: "data/pathway_bakta/pathway.tsv"
