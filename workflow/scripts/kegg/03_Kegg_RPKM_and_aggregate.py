@@ -38,7 +38,7 @@ def calculate_rpkm(PATH_IN: str, PATH_OUT: str) -> tuple[int, pd.DataFrame]:
         df_rpkm.to_csv(PATH_OUT, sep="\t", index=False)
         return 0, df_rpkm
 
-    df_rpkm["read_mapped"] = (
+    df_rpkm["rpkm"] = (
     (df_rpkm["read_mapped"] * 1e9) / (df_rpkm["contig_length"] * total_mapped)
     ).round(4)
     df_rpkm.to_csv(PATH_OUT, sep="\t", index=False)

@@ -38,7 +38,7 @@ def calculate_rpkm(PATH_IN: str, PATH_OUT: str) -> int:
         df.to_csv(PATH_OUT, sep="\t", index=False)
         return 0
 
-    (df["length"] > 0).all() #security
+    (df["contig_length"] > 0).all() #security
     df["rpkm"] = ((df["read_mapped"] * 1e9) / (df["contig_length"] * total_mapped)).round(4)
     df.to_csv(PATH_OUT, sep="\t", index=False)
     return len(df)

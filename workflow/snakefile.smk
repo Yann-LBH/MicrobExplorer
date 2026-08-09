@@ -168,6 +168,20 @@ def get_qc_inputs(source):
                 
     return input_files
 
+
+def get_all_benchmarks(wildcards):
+    """Automatically collect and expand all benchmark files defined across the workflow."""
+    benchmarks = set()
+    for rule in workflow.rules:
+        if rule.benchmark:
+            pattern = str(rule.benchmark)
+            # Expand with SAMPLES if the pattern contains the {sample} wildcard
+            if "{sample}" in pattern:
+                benchmarks.update(expand(pattern, sample=SAMPLES))
+            else:
+                benchmarks.add(pattern)
+    return sorted(list(benchmarks))
+
 # ==========================================================================
 # Cibles finales
 # ==========================================================================
@@ -358,11 +372,13 @@ def get_targets():
 #            )
 #        )
 
+    return targets
+
 rule all:
     input:
         #config["output_path"]["audit"],
-        "benchmarks/summary_benchmarks.csv"
-        get_targets(),
+        "benchmarks/summary_benchmarks.csv",
+        get_targets()
 # ==========================================================================
 # UTILS — Taxonomy and input_pathways
 # ==========================================================================
@@ -517,7 +533,7 @@ rule contigs_global_abundance:
     output:
         global_abundance=CONTIGS_TREATMENT + "2.Global_Abundance/global_abundance_contigs.tsv"
     benchmark:
-        "benchmarks/contigs/{sample}_global_abundance.tsv"
+        "benchmarks/contigs/global_abundance.tsv"
     conda:
         "envs/py_env.yaml"
     script:
@@ -636,7 +652,7 @@ rule kegg_rpkm:
     input:
         data=KEGG_TREATMENT + "2.Intersected/intersected_{sample}_kegg.tsv"
     output:
-        rpkm=KEGG_TREATMENT + "3.RPKM/rpkm_{sample}_kegg.tsv"
+        rpkm=KEGG_TREATMENT + "3.RPKM/rpkm_{sample}_kegg.tsv",
         matrix_phyloseq=KEGG_TREATMENT + "Matrix/Phyloseq/matrix_phyloseq_{sample}_kegg.tsv"
     benchmark:
         "benchmarks/kegg/{sample}_rpkm.tsv"
@@ -894,12 +910,9 @@ rule run_phyloseq:
 # Benchmarks stats
 # ==========================================================================
 
-
 rule aggregate_benchmarks:
     input:
-        reads=expand("benchmarks/reads/{sample}_counting.tsv", sample=SAMPLES),
-        contigs=expand("benchmarks/contigs/{sample}_counting.tsv", sample=SAMPLES),
-        kegg=expand("benchmarks/kegg/{sample}_extraction.tsv", sample=SAMPLES)
+        get_all_benchmarks
     output:
         csv="benchmarks/summary_benchmarks.csv"
     run:
@@ -909,20 +922,25 @@ rule aggregate_benchmarks:
         records = []
         for file_path in input:
             path = Path(file_path)
-            df = pd.read_csv(path, sep="\t")
-            
-            # Extract metadata from file structure
-            df["rule"] = path.parent.name
-            df["sample"] = path.stem.replace("_counting", "")
-            records.append(df)
+            if path.exists():
+                df = pd.read_csv(path, sep="\t")
+                
+                # Extract metadata from file structure
+                df["rule"] = path.parent.name
+                df["sample"] = path.stem.replace("_counted", "").replace("_filtered", "")
+                records.append(df)
 
-        # Combine all benchmark data into a single dataframe
-        summary_df = pd.concat(records, ignore_index=True)
-        
-        # Reorder key columns first
-        primary_cols = ["rule", "sample", "s", "h:m:s", "max_rss", "cpu_time"]
-        other_cols = [c for c in summary_df.columns if c not in primary_cols]
-        summary_df[primary_cols + other_cols].to_csv(output.csv, index=False)
+        if records:
+            summary_df = pd.concat(records, ignore_index=True)
+            
+            # Reorder key benchmark columns if present
+            primary_cols = ["rule", "sample", "s", "h:m:s", "max_rss", "cpu_time"]
+            existing_primary = [c for c in primary_cols if c in summary_df.columns]
+            other_cols = [c for c in summary_df.columns if c not in existing_primary]
+            
+            summary_df[existing_primary + other_cols].to_csv(output.csv, index=False)
+        else:
+            pd.DataFrame().to_csv(output.csv, index=False)
 # ==========================================================================
 # AUDIT
 # ==========================================================================

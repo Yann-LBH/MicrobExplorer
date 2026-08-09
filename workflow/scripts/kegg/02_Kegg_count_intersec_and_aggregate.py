@@ -55,6 +55,7 @@ def intersection_kegg(PATH_IN: str, COUNTS: str, PATH_OUT: str) -> int:
         "contig_id",
         "kegg_id",
         "gene_length",
+        "contig_length",
         "n_ko",
     }
     count_cols = [
@@ -86,7 +87,7 @@ def aggregate_by_ko(df: pd.DataFrame, MATRIX_DESEQ: str) -> int:
         return 0
     
     # Identify numeric count columns dynamically
-    metadata_cols = {"key", "locus_tag", "contig_id", "kegg_id", "gene_length"}
+    metadata_cols = {"key", "locus_tag", "contig_id", "kegg_id", "gene_length", "contig_length"}
     count_cols = [
         col
         for col in df.columns
@@ -94,12 +95,19 @@ def aggregate_by_ko(df: pd.DataFrame, MATRIX_DESEQ: str) -> int:
         and pd.api.types.is_numeric_dtype(df[col])
     ]
 
+    if not count_cols:
+        logging.warning("No numeric count columns found for DESeq matrix.")
+        return 0
+
     # Group by KO (including "NA") and sum counts across all count columns
     df_agg = (
         df.groupby("kegg_id", as_index=False)[count_cols]
         .sum()
         .sort_values(by=count_cols[0], ascending=False)
     )
+
+    final_cols = ["kegg_id"] + count_cols
+    df_agg = df_agg[final_cols]
 
     df_agg.to_csv(MATRIX_DESEQ, sep="\t", index=False)
     return len(df_agg)

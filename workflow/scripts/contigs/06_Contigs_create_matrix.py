@@ -11,7 +11,7 @@ import os
 import pandas as pd
 
 
-def generate_contig_matrices(
+def generate_contig_matrix(
     PATH_IN: str, MATRIX_DESEQ: str, MATRIX_PHYLOSEQ: str
 ) -> tuple[int, int]:
     """Reads the union contig file and exports raw count and RPKM matrices.
@@ -20,14 +20,14 @@ def generate_contig_matrices(
     """
     df = pd.read_csv(PATH_IN, sep="\t")
 
-    required_cols = {"contig_id", "raw_count", "rpkm"}
+    required_cols = {"contig_id", "read_mapped", "rpkm"}
     missing = required_cols - set(df.columns)
     if missing:
         raise KeyError(f"Missing required columns in {PATH_IN}: {missing}")
 
     if df.empty:
         logging.warning(f"Input file {PATH_IN} is empty.")
-        pd.DataFrame(columns=["contig_id", "raw_count"]).to_csv(
+        pd.DataFrame(columns=["contig_id", "read_mapped"]).to_csv(
             MATRIX_DESEQ, sep="\t", index=False
         )
         pd.DataFrame(columns=["contig_id", "rpkm"]).to_csv(
@@ -36,8 +36,8 @@ def generate_contig_matrices(
         return 0, 0
 
     # 1. Raw Count Matrix for DESeq2
-    df_deseq = df[["contig_id", "raw_count"]].sort_values(
-        by="raw_count", ascending=False
+    df_deseq = df[["contig_id", "read_mapped"]].sort_values(
+        by="read_mapped", ascending=False
     )
     df_deseq.to_csv(MATRIX_DESEQ, sep="\t", index=False)
 
