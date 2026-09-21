@@ -87,25 +87,31 @@ To map raw outputs to experimental variables, MicrobExplorer requires two config
 ### 1. Sample Mapping (`config/samples.tsv`)
 A file naming each sample ID you want to use:
 
+```text
 sample
 T1_ctrl_261501
 T1_261501
+```
 
 ### 2. Experimental Metadata (`data/metadata/metadata.xlsx`)
 An Excel sheet containing experimental variables used for PERMANOVA, DESeq2 contrasts, and plot grouping (`sample_id`, `group`, `name`, `date`):
 
+```text
 | sample_id | group | name | date |
 | :--- | :--- | :--- | :--- | :--- |
 | **T1_ctrl_261501** | Ctrl | T1_Ctrl | 2026/01/15 |
 | **T1_261501** | T1 | T1 | 2026/01/15 |
+```
 
 ### 3. Physicochemical Metadata (`data/physico_parameters/parameters.xlsx`)
 An Excel sheet containing physicochemical variables used for ACP, and plot grouping (`date`, `name`, `ph`, etc.):
 
+```text
 | date | name | pH | AGV mg/l |
 | :--- | :--- | :--- | :--- | :--- |
 | **2026/01/15** | T1_Ctrl | 6.8 | 42 |
 | **2026/01/15** | T1 | TD1_T1 | 7.2 | 34 |
+```
 
 ---
 
