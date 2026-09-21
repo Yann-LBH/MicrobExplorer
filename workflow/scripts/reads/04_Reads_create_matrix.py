@@ -1,17 +1,23 @@
 ################################################################################
 # Project : "MicrobExplorer"
-# Script: "Create matrix for deseq and Phyloseq from union contig file"
+# Script: "Create matrix for deseq and Phyloseq for reads"
 # Author: "Yann Le Bihan"
 # Date: "2025-12-01"
 # Link : https://github.com/Yann-LBH/MicrobExplorer
 ################################################################################
 
-import logging
 import os
+import logging
 import pandas as pd
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
-def generate_contig_matrix(
+
+def generate_reads_matrix(
     PATH_IN: str, MATRIX_DESEQ: str, MATRIX_PHYLOSEQ: str
 ) -> tuple[int, int]:
     """Reads the union contig file and exports raw count and RPKM matrices.
@@ -20,56 +26,58 @@ def generate_contig_matrix(
     """
     df = pd.read_csv(PATH_IN, sep="\t")
 
-    required_cols = {"contig_id", "read_mapped", "rpkm"}
+    required_cols = {"read_id", "count", "cpm"}
     missing = required_cols - set(df.columns)
     if missing:
         raise KeyError(f"Missing required columns in {PATH_IN}: {missing}")
 
     if df.empty:
         logging.warning(f"Input file {PATH_IN} is empty.")
-        pd.DataFrame(columns=["contig_id", "read_mapped"]).to_csv(
+        pd.DataFrame(columns=["read_id", "count"]).to_csv(
             MATRIX_DESEQ, sep="\t", index=False
         )
-        pd.DataFrame(columns=["contig_id", "rpkm"]).to_csv(
+        pd.DataFrame(columns=["read_id", "cpm"]).to_csv(
             MATRIX_PHYLOSEQ, sep="\t", index=False
         )
         return 0, 0
 
     # 1. Raw Count Matrix for DESeq2
-    df_deseq = df[["contig_id", "read_mapped"]].sort_values(
-        by="read_mapped", ascending=False
+    df_deseq = df[["read_id", "count"]].sort_values(
+        by="count", ascending=False
     )
     df_deseq.to_csv(MATRIX_DESEQ, sep="\t", index=False)
 
-    # 2. RPKM Matrix for Phyloseq / Abundance
-    df_phyloseq = df[["contig_id", "rpkm"]].sort_values(
-        by="rpkm", ascending=False
+    # 2. CPM Matrix for Phyloseq / Abundance
+    df_phyloseq = df[["read_id", "cpm"]].sort_values(
+        by="cpm", ascending=False
     )
     df_phyloseq.to_csv(MATRIX_PHYLOSEQ, sep="\t", index=False)
 
     return len(df_deseq), len(df_phyloseq)
 
 
-# --- Execution ---
+# ==========================================================================
 if __name__ == "__main__":
+
     PATH_IN = snakemake.input.data
     MATRIX_DESEQ = snakemake.output.matrix_deseq
     MATRIX_PHYLOSEQ = snakemake.output.matrix_phyloseq
 
+    # Report
     sample_name = getattr(
         snakemake.wildcards, "sample", os.path.basename(PATH_IN)
     )
-    n_deseq, n_phylo = generate_contig_matrix(
+    n_deseq, n_phylo = generate_reads_matrix(
         PATH_IN, MATRIX_DESEQ, MATRIX_PHYLOSEQ
     )
 
     if n_deseq > 0:
         logging.info(
-            f"[CONTIGS_MATRIX] SUCCESS | Sample: {sample_name} | "
+            f"[READS_MATRIX] SUCCESS | Sample: {sample_name} | "
             f"DESeq2 Rows: {n_deseq} | Phyloseq Rows: {n_phylo}"
         )
     else:
         logging.error(
-            f"[CONTIGS_MATRIX] FAILED  | Sample: {sample_name} | Input: {PATH_IN}"
+            f"[READS_MATRIX] FAILED  | Sample: {sample_name} | Input: {PATH_IN}"
         )
         raise RuntimeError(f"Matrix generation failed for {sample_name}")

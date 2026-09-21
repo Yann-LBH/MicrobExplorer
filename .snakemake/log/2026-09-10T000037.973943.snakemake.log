@@ -1,0 +1,7 @@
+Building DAG of jobs...
+MissingInputException in rule reads_counting in file "D:\MicrobExplorer\workflow\snakefile.smk", line 650:
+Missing input files for rule reads_counting:
+    output: results/treatment/reads/1.Counted/counted_TD1_250814_reads.tsv
+    wildcards: sample=TD1_250814
+    affected files:
+        data/raw/reads/reads_TD1_250814.kaijuNR

@@ -1,10 +1,11 @@
-################################################################################
-# Project : "MicrobExplorer"
-# Script: "Utilitaires : Barplot_DESeq2"
-# Author: "Yann Le Bihan"
-# Date: "2025-12-01"
-# Link : https://github.com/Yann-LBH/MicrobExplorer
-################################################################################
+# ==============================================================================
+# PROJECT   : MicrobExplorer
+# SCRIPT    : utils_stackedbarplot_from_DESeq2.R
+# PURPOSE   : A utility that manages the operation of stackedbarplot_from_DESeq2
+# AUTHOR    : Yann Le Bihan
+# DATE      : 2026-09-03
+# LINK      : https://github.com/Yann-LBH/MicrobExplorer
+# ==============================================================================
 
 # Libraries CRAN
 library(data.table)
@@ -18,7 +19,7 @@ library(phyloseq)
 # 1. Charger les résultats DESeq2
 # ==========================================================================
 load_deseq2_results <- function(deseq_paths) {
-#' Load DESeq2 results from the new Master RDS structure
+  #' Load DESeq2 results from the new Master RDS structure
   #'
   #' @param deseq_paths Named list or named vector with file paths
   #'        Names should be contrast types (e.g., "ref", "date", "combo")
@@ -121,9 +122,9 @@ get_significant_features <- function(DESEQ_RESULTS, PADJ_THRESHOLD, LFC_THRESHOL
   id_col <- if ("Feature_ID" %in% names(DESEQ_RESULTS)) "Feature_ID" else "KO_Number"
 
   if (direction == "up") {
-    features <- DESEQ_RESULTS[padj <= PADJ_THRESHOLD & log2FoldChange >= LFC_THRESHOLD, get(id_col)]
+    features <- DESEQ_RESULTS[padj <= PADJ_THRESHOLD & log2FoldChange >= LFC_THRESHOLD][[id_col]]
   } else if (direction == "down") {
-    features <- DESEQ_RESULTS[padj <= PADJ_THRESHOLD & log2FoldChange <= -LFC_THRESHOLD, get(id_col)]
+    features <- DESEQ_RESULTS[padj <= PADJ_THRESHOLD & log2FoldChange <= -LFC_THRESHOLD][[id_col]]
   } else {
     stop("direction must be 'up' or 'down'")
   }
@@ -143,29 +144,23 @@ generate_color_palette <- function(top_features, palette_name = "turbo") {
   if (!palette_name %in% c("turbo", "viridis", "magma", "plasma", "inferno", "cividis")) {
     palette_name <- "turbo"
   }
-  
+
+  # Sécurisation : extraction des noms uniques pour éviter les doublons
+  top_features_unique <- unique(top_features)
+
   # Appel dynamique de la fonction du package viridis (ex: viridis::turbo(n))
   colors <- do.call(get(palette_name, envir = asNamespace("viridis")), list(length(top_features)))
-  names(colors) <- top_features
+  names(colors) <- top_features_unique
   
   return(colors)
 }
+
 # ==========================================================================
 # 5. Préparer les données pour le plot (Version Corrigée et Sécurisée)
 # ==========================================================================
 prepare_plot_data <- function(df_abundance, sig_features, TOP_N, group_column = "group", rank_column = NULL, comp_name = NULL, time_column = "date") {
   #' Prepare data for stacked barplot with auto-filtering based on contrast elements
-  #'
-  #' @param df_abundance data.table with abundance data
-  #' @param sig_features Vector of significant feature IDs (OTUs/KOs)
-  #' @param TOP_N Number of top features to highlight
-  #' @param group_column Column from metadata to group samples by (e.g., "group")
-  #' @param rank_column The RANK parameter passed from config (e.g., "genus")
-  #' @param comp_name The comparison string from DESeq2 (e.g., "2025-08-14_vs_2025-08-06")
-  #' @param time_column The name of the time column in metadata (default "date")
-  #' @return data.table formatted for plotting
 
-  # Copie locale explicite
   df_local <- copy(df_abundance)
 
   # 🔍 DÉTECTION ET FILTRAGE DYNAMIQUE SELON LE CONTRASTE
@@ -173,8 +168,6 @@ prepare_plot_data <- function(df_abundance, sig_features, TOP_N, group_column = 
     elements_in_contrast <- unlist(strsplit(comp_name, "_vs_"))
     elements_in_contrast <- trimws(elements_in_contrast)
     
-    # Sécurité majeure : On convertit la colonne temporelle en texte (YYYY-MM-DD) 
-    # pour pouvoir la comparer proprement aux chaînes du contraste
     if (time_column %in% names(df_local)) {
       df_local[, time_var_str := as.character(get(time_column))]
     } else {
@@ -183,17 +176,12 @@ prepare_plot_data <- function(df_abundance, sig_features, TOP_N, group_column = 
     
     time_values_str <- unique(df_local$time_var_str)
     
-    # Mode Temporel : Si les éléments du contraste matchent avec les dates en texte
-    if (length(time_values_str) > 0 && all(elements_in_contrast %in% time_values_str)) {
-      
-      # Filtrage sur la colonne convertie en texte
+    # Mode Temporel
+    if (length(time_values_str) > 0 && any(elements_in_contrast %in% time_values_str)) {
       df_local <- df_local[time_var_str %in% elements_in_contrast]
-      
-      # Création de l'axe X combiné pour le plot (ex: TD1_2025-08-06)
       df_local[, Group_Plot_Var := paste0(get(group_column), "_", time_var_str)]
       target_group_col <- "Group_Plot_Var"
       message(sprintf("    [Plot Prep] Automated TIME mode active for %s. Samples retained: %d", comp_name, nrow(df_local)))
-      
     } else {
       # Mode Condition/Ref/Combo
       if (group_column %in% names(df_local)) {
@@ -209,56 +197,58 @@ prepare_plot_data <- function(df_abundance, sig_features, TOP_N, group_column = 
     target_group_col <- group_column
   }
 
-  # Nettoyage de la colonne temporaire si elle existe
   if ("time_var_str" %in% names(df_local)) df_local[, time_var_str := NULL]
 
-  # Sécurité : Si le filtre a tout vidé
   if (nrow(df_local) == 0) {
-    warning(sprintf("Warning: Zero rows remaining for comparison '%s' after dynamic filtering. Check metadata values.", comp_name))
+    warning(sprintf("Warning: Zero rows remaining for comparison '%s' after dynamic filtering.", comp_name))
     return(data.table(Group_Var = character(0), Category = factor(character(0)), Abundance = numeric(0)))
   }
 
-  # Création dynamique de Display_Name selon le niveau taxonomique ou fonctionnel choisi
-  if (!is.null(rank_column) && rank_column %in% names(df_local)) {
-    df_local[, Display_Name := as.character(get(rank_column))]
-  } else if ("ko" %in% names(df_local)) {
-    df_local[, Display_Name := as.character(ko)]
-  } else if ("contig_id" %in% names(df_local)) {
-    df_local[, Display_Name := as.character(contig_id)]
+  match_rank_col <- names(df_local)[tolower(names(df_local)) == tolower(rank_column)]
+
+  if (length(match_rank_col) > 0 && match_rank_col[1] != "OTU") {
+    # 1. Cas Taxonomie classique (ex: Species, Genus, Family...) pour contigs / reads
+    val_rank <- as.character(df_local[[match_rank_col[1]]])
+    
+    # Nettoyage des chaînes vides ou NA
+    val_rank[is.na(val_rank) | val_rank == "" | val_rank == "NA"] <- "Unassigned"
+    
+    df_local[, Display_Name := val_rank]
+
+  } else if ("combined_label" %in% names(df_local) && any(!is.na(df_local$combined_label))) {
+    # 2. Cas KEGG (KO | description)
+    df_local[, Display_Name := as.character(combined_label)]
+
   } else {
+    # 3. Fallback sur l'OTU / ID du contig
     df_local[, Display_Name := as.character(OTU)]
   }
 
-  # Nettoyage et troncature pour la lisibilité sur le PDF
-  df_local[is.na(Display_Name) | Display_Name == "", Display_Name := as.character(OTU)]
-  df_local[, Display_Name := substr(Display_Name, 1, 35)]
+  # 🟢 NETTOYAGE & TRONCATURE DU LIBELLÉ
+  df_local[is.na(Display_Name) | Display_Name == "" | Display_Name == "NA", Display_Name := "Unassigned"]
+  
+  df_local[!grepl("unassigned", Display_Name, ignore.case = TRUE), 
+           Display_Name := ifelse(nchar(Display_Name) > 45, paste0(substr(Display_Name, 1, 42), "..."), Display_Name)]
 
-  # Filtrer pour le sous-ensemble significatif
   df_sig <- df_local[OTU %in% sig_features]
 
-  # Trouver les top caractéristiques basées sur leur Display_Name
   top_features <- character(0)
   if (nrow(df_sig) > 0) {
-    top_features <- df_sig[, .(Total_Abundance = sum(Abundance)), by = Display_Name][
-      order(-Total_Abundance)
-    ][1:min(TOP_N, .N), Display_Name]
+    top_dt <- df_sig[, .(Total_Abundance = sum(Abundance)), by = Display_Name][order(-Total_Abundance)]
+    top_features <- head(top_dt$Display_Name, TOP_N)
   }
 
-  # Assigner les catégories
   df_local[, Category := "Not significant"]
   df_local[OTU %in% sig_features, Category := "Significant (Other)"]
-  df_local[Display_Name %in% top_features, Category := Display_Name]
+  df_local[Display_Name %in% top_features & OTU %in% sig_features, Category := Display_Name]
 
-  # Agréger dynamiquement par la variable nettoyée
   df_plot <- df_local[, .(Abundance = sum(Abundance)),
     by = .(Group_Var = get(target_group_col), Category)
   ]
   
-  # Normaliser les profils à 100% par groupe de réplicats
   df_plot[, Total_Group_Abund := sum(Abundance), by = Group_Var]
   df_plot[Total_Group_Abund > 0, Abundance := Abundance / Total_Group_Abund]
 
-  # Configurer l'ordre des facteurs pour l'affichage de la légende
   factor_levels <- c("Not significant", "Significant (Other)", sort(top_features))
   df_plot[, Category := factor(Category, levels = factor_levels)]
 
@@ -276,7 +266,6 @@ create_stackedbarplot <- function(df_plot, title, subtitle, feature_colors, grou
   #' @param group_label Axis label name
   #' @return ggplot object
 
-  # Adding colors for "Significant (Other)" and "Not significant"
   color_map <- c(
     feature_colors,
     "Significant (Other)" = "grey50",

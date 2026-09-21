@@ -1,0 +1,7 @@
+Building DAG of jobs...
+MissingInputException in rule kegg_extraction in file "D:\MicrobExplorer\workflow\snakefile.smk", line 825:
+Missing input files for rule kegg_extraction:
+    output: results/treatment/kegg/1.Extracted/extracted_TD1_250806_kegg.tsv
+    wildcards: sample=TD1_250806
+    affected files:
+        data/raw/kegg/coassembly_bakta.gff3

@@ -2,12 +2,12 @@
   "languages": ["en", "fr"],
   "translation": [
     {
-      "key": "TITLE_STACKEDBARPLOT",
+      "key": "TITLE_STACKEDBARPLOT_ABUNDANCE",
       "en": "{source} | Top {top_n} {feature_type} abundance in {scope}",
       "fr": "{source} | Abondance du top {top_n} {feature_type} pour {scope}"
     },
     {
-      "key": "SUBTITLE_STACKEDBARPLOT",
+      "key": "SUBTITLE_STACKEDBARPLOT_ABUNDANCE",
       "en": "Mode : {mode} | Metric: {stand_col} | {rank}",
       "fr": "Mode : {mode} | Mesure: {stand_col} | {rank}"
 
@@ -26,8 +26,8 @@
     },
     {
       "key": "TITLE_HEATMAP",
-      "en": "{source} | Abundance of the top {top_n} taxons in sample {sample}",
-      "fr": "{source} | Abondance des {top_n} taxons les plus représentés dans l'échantillon {sample}"
+      "en": "{source} | Abundance of the top {top_n} {feature_type} in sample {sample}",
+      "fr": "{source} | Abondance des {top_n} {feature_type} les plus représentés dans l'échantillon {sample}"
     },
     {
       "key": "SUBTITLE_HEATMAP",
@@ -35,9 +35,19 @@
       "fr": "Regroupement hiérarchique : {clust_method} | Mesure de distance : {distance_method} | {rank} "
     },
     {
+      "key": "TITLE_HEATMAP_DESEQ2",
+      "en": "{source} | Top {top_n} {feature_type} abundance in {comparison} {unassigned_status}",
+      "fr": "{source} | Abondance des {top_n} {feature_type} dans l'échantillon {comparison} {unassigned_status}"
+    },
+    {
+      "key": "SUBTITLE_HEATMAP_DESEQ2",
+      "en": "Comparison: {contrast} | Rank: {rank} | Clustering: {clust_method} ({distance_method}) | padj < {padj_threshold}, |LFC| > {lfc_threshold}",
+      "fr": "Comparaison : {contrast} | Rang : {rank} | Regroupement : {clust_method} ({distance_method}) | padj < {padj_threshold}, |LFC| > {lfc_threshold}"
+    },
+    {
       "key": "TITLE_PCA",
-      "en": "{source} | Principal Component Analysis (PCA) — {top_n} most variable taxa",
-      "fr": "{source} | Analyse en Composantes Principales (ACP) — {top_n} taxons les plus variables"
+      "en": "{source} | Principal Component Analysis (PCA) — {top_n} most variable projection {feature_type}",
+      "fr": "{source} | Analyse en Composantes Principales (ACP) — {top_n} {feature_type} avec la projection la plus variable"
     },
     {
       "key": "SUBTITLE_PCA",
@@ -46,8 +56,8 @@
     },
     {
       "key": "TITLE_VOLCANO",
-      "en": "{source} | Top {top_n} taxons differentialy abundant in {contrast}",
-      "fr": "{source} | Top {top_n} des taxons différentiellement abondant dans {sample}"
+      "en": "{source} | Top {top_n} {feature_type} differentialy abundant in {contrast}",
+      "fr": "{source} | Top {top_n} des {feature_type} différentiellement abondant dans {sample}"
     },
     {
       "key": "SUBTITLE_VOLCANO",

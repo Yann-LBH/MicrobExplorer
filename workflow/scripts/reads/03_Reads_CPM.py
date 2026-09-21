@@ -20,7 +20,6 @@ logging.basicConfig(
 def calculate_cpm(PATH_IN: str, PATH_OUT: str) -> int | bool :
     """Calculates Counts Per Million (CPM) for each taxon using Pandas."""
     try:
-        # 1. Pandas charge le fichier et détecte automatiquement le header d'origine
         df = pd.read_csv(PATH_IN, sep="\t", header=0)
         
         total_reads = df["count"].sum()
@@ -40,8 +39,8 @@ def calculate_cpm(PATH_IN: str, PATH_OUT: str) -> int | bool :
 # ==========================================================================
 if __name__ == "__main__":
 
-    PATH_IN = str(snakemake.input.data)
-    PATH_OUT = str(snakemake.output.cpm)
+    PATH_IN = snakemake.input.data
+    PATH_OUT = snakemake.output.cpm
 
     # Report
     sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))

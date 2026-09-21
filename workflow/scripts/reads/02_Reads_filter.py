@@ -43,9 +43,9 @@ def filtering_kaiju(PATH_IN: str, PATH_OUT: str, COUNT_THRESHOLD: int) -> bool:
 # ==========================================================================
 if __name__ == "__main__":
 
-    PATH_IN = str(snakemake.input.data)
-    PATH_OUT = str(snakemake.output.filtered)
-    COUNT_THRESHOLD = int(snakemake.params.count_threshold)
+    PATH_IN = snakemake.input.data
+    PATH_OUT = snakemake.output.filtered
+    COUNT_THRESHOLD = snakemake.params.count_threshold
 
     # Report
     sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))

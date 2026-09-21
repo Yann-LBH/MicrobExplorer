@@ -1,0 +1,15 @@
+Building DAG of jobs...
+MissingInputException in rule aggregate_benchmarks in file "D:\MicrobExplorer\workflow\snakefile.smk", line 1230:
+Missing input files for rule aggregate_benchmarks:
+    output: benchmarks/summary_benchmarks.csv
+    affected files:
+        benchmarks/reads/deseq2_stackedbarplot_gene_description.tsv
+        benchmarks/contigs/deseq2_stackedbarplot_gene_description.tsv
+        benchmarks/kegg/phyloseq_kegg_species.tsv
+        benchmarks/reads/deseq2_stackedbarplot_level_3.tsv
+        benchmarks/contigs/deseq2_stackedbarplot_species.tsv
+        benchmarks/reads/deseq2_stackedbarplot_species.tsv
+        benchmarks/contigs/deseq2_stackedbarplot_level_3.tsv
+        benchmarks/kegg/deseq2_stackedbarplot_gene_description.tsv
+        benchmarks/kegg/deseq2_stackedbarplot_species.tsv
+        benchmarks/kegg/deseq2_stackedbarplot_level_3.tsv

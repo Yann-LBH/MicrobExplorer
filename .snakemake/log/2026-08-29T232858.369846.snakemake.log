@@ -1,0 +1,7 @@
+Building DAG of jobs...
+MissingInputException in rule plot_stackedbarplot_abundance in file "D:\MicrobExplorer\workflow\snakefile.smk", line 872:
+Missing input files for rule plot_stackedbarplot_abundance:
+    output: results/plots/stackedbarplot_abundance/absolute_global/Stackedbarplot_absolute_global_kegg_species.pdf, results/parquet/stackedbarplot_abundance/stackedbarplot_absolute_global_kegg_species.parquet
+    wildcards: source=kegg, mode=absolute_global, rank=species
+    affected files:
+        results/rds/kegg/phyloseq_kegg_species.rds

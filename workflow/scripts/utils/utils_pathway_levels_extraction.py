@@ -1,10 +1,11 @@
-################################################################################
-# Project : "MicrobExplorer"
-# Script: "Utils Pathway levels extraction"
-# Author: "Yann Le Bihan"
-# Date: "2025-12-01"
-# Link : https://github.com/Yann-LBH/MicrobExplorer
-################################################################################
+# ==============================================================================
+# PROJECT   : MicrobExplorer
+# SCRIPT    : utils_pathway_level_extraction.py
+# PURPOSE   : Download KEGG Pathway and create a pathwaytable
+# AUTHOR    : Yann Le Bihan
+# DATE      : 2026-09-03
+# LINK      : https://github.com/Yann-LBH/MicrobExplorer
+# ==============================================================================
 
 import logging
 import re
@@ -26,7 +27,7 @@ def get_kegg_hierarchy(url: str, output_path: str) -> pd.DataFrame:
     """
     # Pre-compile regex patterns for significant speedup in loops
     re_clean_ab = re.compile(r"^[A-B\s]*\d+\s+")
-    re_pathway = re.compile(r"^\d+\s+(.*)\s*\[PATH:ko\d+\]")
+    re_pathway = re.compile(r"^\d+\s+(.*?)(?:\s*\[(?:PATH|BR):ko\d+\])?$")
     re_ec = re.compile(r"\[EC:(.*?)\]")
 
     logging.info(f"Fetching data from KEGG API: {url}")
@@ -51,7 +52,7 @@ def get_kegg_hierarchy(url: str, output_path: str) -> pd.DataFrame:
             l2 = re_clean_ab.sub("", line).strip()
         elif prefix == "C":
             # Fast extraction of pathway name
-            match_c = re_pathway.search(line[3:])
+            match_c = re_pathway.search(line[1:].strip())
             l3 = match_c.group(1).strip() if match_c else line[3:].strip()
         elif prefix == "D":
             line_content = line[4:].strip()

@@ -1,3 +1,12 @@
+# ==============================================================================
+# PROJECT   : MicrobExplorer
+# SCRIPT    : utils_convert_NCBInames_to_taxatable.py
+# PURPOSE   : Download NCBI taxonomy and create a taxatable
+# AUTHOR    : Yann Le Bihan
+# DATE      : 2026-09-03
+# LINK      : https://github.com/Yann-LBH/MicrobExplorer
+# ==============================================================================
+
 import os
 import urllib.request
 import logging

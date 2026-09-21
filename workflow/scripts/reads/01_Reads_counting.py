@@ -51,8 +51,8 @@ def kaiju_analyze(PATH_IN: str, PATH_OUT: str) -> bool:
 # ==========================================================================
 if __name__ == "__main__":
 
-    PATH_IN = str(snakemake.input.raw_data)
-    PATH_OUT = str(snakemake.output.counted)
+    PATH_IN = snakemake.input.raw_data
+    PATH_OUT = snakemake.output.counted
 
     # Report
     sample_name = getattr(snakemake.wildcards, "sample", os.path.basename(PATH_IN))

@@ -23,7 +23,7 @@ def calculate_rpkm(PATH_IN: str, PATH_OUT: str) -> tuple[int, pd.DataFrame]:
     Calcul the kegg RPKM
     Formula : (Read_mapped (contigs) * 10^9) / (Contig_length * Total_Mapped_Reads)
     """
-    df_rpkm = pd.read_csv(PATH_IN, sep="\t")
+    df_rpkm = pd.read_csv(PATH_IN, sep="\t", keep_default_na=False)
 
     required_cols = {"contig_length", "read_mapped"}
     missing = required_cols - set(df_rpkm.columns)
@@ -55,14 +55,7 @@ def aggregate_by_ko(df: pd.DataFrame, MATRIX_PHYLOSEQ: str) -> int:
         return 0
     
     # Identify numeric count columns dynamically
-    metadata_cols = {"key", "locus_tag", "contig_id", "kegg_id", "gene_length", "contig_length",}
-    count_cols = [
-        col
-        for col in df.columns
-        if col not in metadata_cols
-        and pd.api.types.is_numeric_dtype(df[col])
-    ]
-
+    count_cols = ["rpkm"]
     # Group by KO (including "NA") and sum counts across all count columns
     df_agg = (
         df.groupby("kegg_id", as_index=False)[count_cols]
@@ -88,14 +81,16 @@ if __name__ == "__main__":
 
     # Step 2: Aggregation using the in-memory DataFrame
     if n_rpkm > 0:
+        logging.info(
+            f"[KEGG_RPKM] SUCCESS | Sample: {sample_name} | Rows: {n_rpkm}"
+        )
+
         n_agg = aggregate_by_ko(df_rpkm, MATRIX_PHYLOSEQ)
         logging.info(
-            f"[KEGG_RPKM] SUCCESS | Sample: {sample_name} | "
-            f"RPKM: {n_rpkm} | Aggregated KOs: {n_agg}"
+            f"[KEGG_MATRIX] SUCCESS | Sample: {sample_name} | Aggregated KOs: {n_agg}"
         )
     else:
         logging.error(
-            f"[KEGG_RPKM] FAILED  | Sample: {sample_name} | Input: {PATH_IN}"
+            f"[KEGG_RPKM] FAILED | Sample: {sample_name} | Input: {PATH_IN}"
         )
-
-        raise RuntimeError(f"Filtering failed for {sample_name}")
+        raise RuntimeError(f"Processing failed for {sample_name}")

@@ -1,0 +1,7 @@
+Building DAG of jobs...
+MissingInputException in rule contigs_counting in file "D:\MicrobExplorer\workflow\snakefile.smk", line 713:
+Missing input files for rule contigs_counting:
+    output: results/treatment/contigs/1.Counted/counted_TD1_250814_contigs.tsv
+    wildcards: sample=TD1_250814
+    affected files:
+        data/raw/contigs/count-contigs-coassembly-TD1_250814.tsv

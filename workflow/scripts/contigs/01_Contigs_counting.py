@@ -29,7 +29,8 @@ def filter_contigs(PATH_IN: str, PATH_OUT: str, THRESHOLD: int) -> int:
         PATH_IN, 
         sep="\t", 
         header=None, 
-        names=["contig_id", "contig_length", "read_mapped", "read_unmapped"],
+        usecols=[0, 1, 2],
+        names=["contig_id", "contig_length", "read_mapped"],
         dtype={"length": int}
     )
 

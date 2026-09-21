@@ -1,5 +1,7 @@
 import os
 import csv
+import re
+import json
 #import pandas as pd
 from pathlib import Path
 from glob import glob
@@ -22,8 +24,6 @@ with open(config["samples_file"], "r") as f:
     reader = csv.reader(f, delimiter="\t")
     next(reader)  # Skip header
     SAMPLES = [row[0] for row in reader if row]
-#DATA = pd.read_table(config["samples_file"], index_col=0) #get the samples ID from the first column of the config file
-#SAMPLES = DATA.index.tolist()
 READS_FILES = {sample: f"{config['input_path']['data_raw']['reads']}reads_{sample}.kaijuNR" for sample in SAMPLES}
 CONTIGS_FILES = {sample: f"{config['input_path']['data_raw']['contigs']}count-contigs-coassembly-{sample}.tsv" for sample in SAMPLES}
 KEGG_FILES = f"{config['input_path']['data_raw']['kegg']}coassembly_bakta.gff3"
@@ -42,28 +42,28 @@ TREATMENT_SOURCES = {
     "reads": expand(
         READS_TREATMENT + "3.CPM/cpm_{sample}_reads.tsv", sample=SAMPLES
     ),
-    "reads_deseq": expand(
+    "reads_counts": expand(
         READS_TREATMENT + "Matrix/Deseq/matrix_deseq_{sample}_reads.tsv", sample=SAMPLES
     ),
-    "reads_phyloseq": expand(
+    "reads_normalized": expand(
         READS_TREATMENT + "Matrix/Phyloseq/matrix_phyloseq_{sample}_reads.tsv", sample=SAMPLES
     ),
     "contigs": expand(
         CONTIGS_TREATMENT + "5.Union/union_{sample}_contigs.tsv", sample=SAMPLES
     ),
-    "contigs_deseq": expand(
+    "contigs_counts": expand(
         CONTIGS_TREATMENT + "Matrix/Deseq/matrix_deseq_{sample}_contigs.tsv", sample=SAMPLES
     ),
-    "contigs_phyloseq": expand(
+    "contigs_normalized": expand(
         CONTIGS_TREATMENT + "Matrix/Phyloseq/matrix_phyloseq_{sample}_contigs.tsv", sample=SAMPLES
     ),
     "kegg": expand(
         KEGG_TREATMENT + "3.RPKM/rpkm_{sample}_kegg.tsv", sample=SAMPLES
     ),
-    "kegg_deseq": expand(
+    "kegg_counts": expand(
         KEGG_TREATMENT + "Matrix/Deseq/matrix_deseq_{sample}_kegg.tsv", sample=SAMPLES,
     ),
-    "kegg_phyloseq": expand(
+    "kegg_normalized": expand(
         KEGG_TREATMENT + "Matrix/Phyloseq/matrix_phyloseq_{sample}_kegg.tsv", sample=SAMPLES,
     )
 }
@@ -84,7 +84,9 @@ QC_STEPS = {
         # Treatment output paths
         "counted": (pjoin(config["output_path"]["treatment"], "reads", "1.Counted"), "counted_{sample}_reads.tsv"),
         "filtered": (pjoin(config["output_path"]["treatment"], "reads", "2.Filtered"), "filtered_{sample}_reads.tsv"),
-        "cpm": (pjoin(config["output_path"]["treatment"], "reads", "3.CPM"), "cpm_{sample}_reads.tsv")
+        "cpm": (pjoin(config["output_path"]["treatment"], "reads", "3.CPM"), "cpm_{sample}_reads.tsv"),
+        "matrix_deseq": (pjoin(config["output_path"]["treatment"], "reads", "Matrix", "Deseq"), "matrix_deseq_{sample}_reads.tsv"),
+        "matrix_phyloseq": (pjoin(config["output_path"]["treatment"], "reads", "Matrix", "Phyloseq"), "matrix_phyloseq_{sample}_reads.tsv")
     },
     "contigs": {
         # Raw data path
@@ -112,251 +114,438 @@ QC_STEPS = {
     },
 }
 
-PLOT_PARAMS = {
-    "reads": {"stand_col": "cpm", "label": "cpm"},
-    "contigs": {"stand_col": "rpkm", "label": "rpkm"},
-    "kegg": {"stand_col": "rpkm", "label": "rpkm"},
+METRIC_PARAMS = {
+    "counts": {
+        "reads":   {"stand_col": "count",       "label": "Counts"},
+        "contigs": {"stand_col": "read_mapped", "label": "Mapped Reads"},
+        "kegg":    {"stand_col": "read_mapped", "label": "Mapped Reads"},
+    },
+    "normalized": {
+        "reads":   {"stand_col": "cpm",  "label": "CPM"},
+        "contigs": {"stand_col": "rpkm", "label": "RPKM"},
+        "kegg":    {"stand_col": "rpkm", "label": "RPKM"},
+    }
 }
 
+KEGG_RANKS = ["level_3", "gene_description"]
+
+RULE_DATATYPE_MAP = {
+    "phyloseq": "phyloseq",
+    "deseq2": "deseq2",
+    "stackedbarplot": "stackedbarplot",
+    "heatmap": "heatmap",
+    "volcano": "volcano",
+    "pca": "pca",
+}
+
+BASE_SOURCES = ["reads", "contigs", "kegg"]
 
 # ==========================================================================
 # Helpers
 # ==========================================================================
+# Multilingual traduction Title and Subtitle | I18N
+with open(config.get("title_resolver"), "r", encoding="utf-8") as f:
+    translations_data = json.load(f)["translation"]
+    I18N = {item["key"]: item for item in translations_data}
+
+def get_text(key):
+    """Retrieves the template string in the active language."""
+    lang = config.get("language", "en")
+    return I18N.get(key, {}).get(lang, "")
+
+def is_enabled(flag_name):
+    """Utility function to check if a module flag is active"""
+    return config.get(f"run_{flag_name}", False)
+
 def filter_active_sources(sources_list):
     """Filters the list of data sources (reads, contigs, kegg) based on active run_xxx flags."""
+    return [source for source in sources_list if is_enabled(source)]
 
-    return [source for source in sources_list if config.get(f"run_{source}", False)]
+def get_ranks_for_source(source, plot_type=None):
+    ranks = config["plots"]["shared"]["rank"].get(source, [])
+    if isinstance(ranks, str):
+        ranks = [ranks]
 
-
-def phyloseq(pattern, sources_key):
-    if not config["run_phyloseq"]:
-        return []
-    active_sources = filter_active_sources(config["datatypes"][sources_key])
-    return expand(pattern, source=active_sources)
-
-
-def deseq2(pattern, sources_key):
-    if not config["run_deseq2"]:
-        return []
-    active_sources = filter_active_sources(config["datatypes"][sources_key])
-    return expand(pattern, source=active_sources)
-
-
-def get_graphs_input(wildcards):
-    return TREATMENT_SOURCES[wildcards.source]
-
-
-def pca(pattern, sources_key):
-    """Generates targets for PCA if the run_pca flag is active in the config."""
-    if not config.get("run_pca", True):  # Default to True if the flag isn't set yet
-        return []
-    active_sources = filter_active_sources(config["datatypes"][sources_key])
-    return expand(pattern, source=active_sources)
-
-
-def get_qc_inputs(source):
-    input_files = []
-    
-    for step, (folder, fname) in QC_STEPS[source].items():
-        # If the filename is static (like coassembly_bakta.gff3), add it only once
-        if "{sample}" not in fname:
-            input_files.append(pjoin(folder, fname))
+    if source == "kegg":
+        if plot_type == "heatmap_deseq2":
+            # La heatmap prend level_3 ET gene_description
+            return ranks
         else:
-            # Otherwise, expand it for all samples
-            for s in SAMPLES:
-                input_files.append(pjoin(folder, fname.format(sample=s)))
-                
-    return input_files
+            # Tous les autres plots (PCA, Volcano, etc.) excluent level_3
+            return [r for r in ranks if r != "level_3"]
 
+    # Pour reads/contigs, retourne tous les rangs taxonomiques (species, genus...)
+    return ranks
 
-def get_all_benchmarks(wildcards):
-    """Automatically collect and expand all benchmark files defined across the workflow."""
-    benchmarks = set()
-    for rule in workflow.rules:
-        if rule.benchmark:
-            pattern = str(rule.benchmark)
-            # Expand with SAMPLES if the pattern contains the {sample} wildcard
-            if "{sample}" in pattern:
-                benchmarks.update(expand(pattern, sample=SAMPLES))
-            else:
-                benchmarks.add(pattern)
-    return sorted(list(benchmarks))
+def is_clr_mode(rule_name="permanova"):
+    """Vérifie si le mode CLR est activé pour une règle donnée."""
+    cfg = config.get(rule_name, {})
+    use_clr = cfg.get("use_clr", False)
+    dist_method = str(cfg.get("distance_method", "")).lower()
+    return use_clr or dist_method == "clr"
 
-# ==========================================================================
-# Cibles finales
-# ==========================================================================
-def get_targets():
+def get_permanova_inputs(wildcards):
+    """Sélectionne dynamiquement les tables (counts vs normalized)."""
+    metric = "counts" if is_clr_mode("permanova") else "normalized"
+    suffix = "_counts" if metric == "counts" else "_normalized"
+    return TREATMENT_SOURCES[f"{wildcards.source}{suffix}"]
+
+def get_permanova_params(wildcards):
+    """Extrait la colonne d'abondance et le label associés."""
+    metric = "counts" if is_clr_mode("permanova") else "normalized"
+    return METRIC_PARAMS[metric][wildcards.source]
+
+# --- Module Helpers ---
+
+def taxonomy():
+    if not is_enabled("taxonomy"):
+        return []
+    return [
+        config["input_path"]["taxonomy_ncbi"]["local_path"],
+        config["input_path"]["taxonomy_megahit"]["converted"],
+        config["input_path"]["pathway_bakta"]["local_path"],
+    ]
+
+def reads():
+    if not is_enabled("reads"):
+        return []
+    return TREATMENT_SOURCES["reads"] + TREATMENT_SOURCES["reads_counts"] + TREATMENT_SOURCES["reads_normalized"]
+
+def contigs():
+    if not is_enabled("contigs"):
+        return []
+    return TREATMENT_SOURCES["contigs"] + TREATMENT_SOURCES["contigs_counts"] + TREATMENT_SOURCES["contigs_normalized"]
+
+def kegg():
+    if not is_enabled("kegg"):
+        return []
+    return TREATMENT_SOURCES["kegg"] + TREATMENT_SOURCES["kegg_counts"] + TREATMENT_SOURCES["kegg_normalized"]
+
+# --- Plots & Analysis Helpers ---
+
+def physico():
+    if not is_enabled("physico"):
+        return []
+    return [
+        pjoin(config["output_path"]["plots"], "physico", "Physico_plot.pdf"),
+        pjoin(config["output_path"]["parquet"], "physico", "physico_plot.parquet"),
+    ]
+
+def stackedbarplot_abundance():
+    if not (is_enabled("stackedbarplot_abundance") and is_enabled("phyloseq")):
+        return []
+
     targets = []
+    abundance_dict = config.get("datatypes", {}).get("stackedbarplot", {}).get("abundance", {})
 
-    # --- Taxonomy ---
-    if config.get("run_taxonomy", False):
-        targets.extend([
-                config["input_path"]["taxonomy_ncbi"]["local_path"],
-                config["input_path"]["taxonomy_megahit"]["converted"],
-                config["input_path"]["pathway_bakta"]["local_path"],
-        ])
-
-    # --- Reads ---
-    if config.get("run_reads", False):
-        targets.extend(TREATMENT_SOURCES["reads"])
-
-    # --- Contigs ---
-    if config.get("run_contigs", False):
-        targets.extend(TREATMENT_SOURCES["contigs"])
-        targets.extend(TREATMENT_SOURCES["contigs_deseq"])
-        targets.extend(TREATMENT_SOURCES["contigs_phyloseq"])
-
-    if config.get("run_kegg", False):
-        targets.extend(TREATMENT_SOURCES["kegg"])
-        targets.extend(TREATMENT_SOURCES["kegg_deseq"])
-        targets.extend(TREATMENT_SOURCES["kegg_phyloseq"])
-
-    # --- Plots ---
-    if config.get("run_plots", False):
-        # Stackedbarplots standard
-        for mode, sources in config["datatypes"]["stackedbarplot"]["standard"].items():
-            active_sources = filter_active_sources(sources)
+    # Parcourt chaque mode (pathway_relative, relative_by_sample, etc.) et filtre ses sources
+    for mode, sources in abundance_dict.items():
+        active_sources = filter_active_sources(sources)  # Correction : filtre la liste 'sources' du mode courant
+        for source in active_sources:
+            source_ranks = get_ranks_for_source(source, plot_type="stackedbarplot_abundance")
             targets.extend(
                 expand(
                     [
                         pjoin(
                             config["output_path"]["plots"],
-                            "stackedbarplot",
+                            "stackedbarplot_abundance",
                             "{mode}",
-                            "Stackedbarplot_{mode}_{source}.pdf",
+                            "Stackedbarplot_{mode}_{source}_{rank}.pdf",
                         ),
                         pjoin(
                             config["output_path"]["parquet"],
-                            "stackedbarplot",
-                            "stackedbarplot_{mode}_{source}.parquet",
+                            "stackedbarplot_abundance",
+                            "stackedbarplot_{mode}_{source}_{rank}.parquet",
                         ),
                     ],
-                        mode=mode,
-                        source=active_sources,
+                    mode=mode,
+                    source=source,
+                    rank=source_ranks,
                 )
             )
-        # Stackedbarplots DESeq2
-        targets += deseq2(
-            pjoin(
-                config["output_path"]["plots"],
-                "stackedbarplot",
-                "deseq2",
-                "Stackedbarplot_deseq2_{source}.pdf",
-            ),
-            "deseq2",
-        )
-        targets += deseq2(
-            pjoin(
-                config["output_path"]["parquet"],
-                "stackedbarplot",
-                "stackedbarplot_deseq2_{source}.parquet",
-            ),
-            "deseq2",
-        )
 
-        # Heatmap
-        targets += phyloseq(
-            pjoin(
-                config["output_path"]["plots"],
-                "heatmap",
-                "{source}",
-                "Heatmap_{source}.pdf",
-            ),
-            "heatmap",
-        )
-        targets += phyloseq(
-            pjoin(config["output_path"]["parquet"], "heatmap","heatmap_{source}.parquet"),
-            "heatmap",
-        )
+    return targets
 
-        # PCA
-        targets += pca(
-            pjoin(config["output_path"]["plots"], "pca", "PCA_{source}.pdf"),
-            "pca"
-        )
-        targets += pca(
-            pjoin(config["output_path"]["parquet"], "pca", "pca_{source}.parquet"),
-            "pca"
-        )
-        targets += pca(
-            pjoin(config["output_path"]["plots"], "pca", "pca_contributions_{source}.xlsx"),
-            "pca"
-        )
 
-        # Volcano
-        targets += deseq2(
-            pjoin(
-                config["output_path"]["plots"],
-                "volcano",
-                "{source}",
-                "Volcano_deseq2_{source}.pdf",
-            ),
-            "volcano",
-        )
-        targets += deseq2(
-            pjoin(
-                config["output_path"]["parquet"],
-                "volcano",
-                "volcano_from_deseq2_{source}.parquet",
-            ),
-            "volcano",
-        )
+def stackedbarplot_deseq2():
+    if not (is_enabled("stackedbarplot_deseq2") and is_enabled("phyloseq") and is_enabled("deseq2")):
+        return []
 
-    # --- DESeq2 ---
-    if config.get("run_deseq2", False):
-        targets += deseq2(
-            pjoin(config["output_path"]["rds"], "{source}", "deseq2_{source}.rds"),
-            "deseq2",
-        )
-        targets += deseq2(
-            pjoin(
-                config["output_path"]["parquet"], "deseq2", "deseq2_{source}.parquet"
-            ),
-            "deseq2",
-        )
+    targets = []
+    for source in filter_active_sources(config["datatypes"]["stackedbarplot"]["deseq2"]):
+        # Taxonomic ranks are automatically retrieved for reads/contigs
+        # and only gene_description for KEGG
+        source_ranks = get_ranks_for_source(source, plot_type="stackedbarplot_deseq2")
 
-    # --- Phyloseq ---
-    if config.get("run_phyloseq", False):
-        targets += phyloseq(
-            pjoin(config["output_path"]["rds"], "{source}", "phyloseq_{source}.rds"),
-            "phyloseq",
-        )
-
-    if config.get("run_physico", False):
         targets.extend(
             expand(
                 [
-                    pjoin(config["output_path"]["plots"], "physico", "Physico_plot.pdf"),
-                    pjoin(config["output_path"]["parquet"], "physico", "physico_plot.parquet"),
-                ]
+                    pjoin(config["output_path"]["plots"], "stackedbarplot", "deseq2", "Stackedbarplot_deseq2_{source}_{rank}.pdf"),
+                    pjoin(config["output_path"]["parquet"], "stackedbarplot", "stackedbarplot_deseq2_{source}_{rank}.parquet"),
+                ],
+                source=source,
+                rank=source_ranks,
             )
         )
-    # --- QC ---
-    if config.get("run_qc", False):
-        datatypes = list(QC_STEPS.keys())
-        active_qc_dt = filter_active_sources(datatypes)
-        active_qc_dt = [
-            source for source in active_qc_dt
-            if len(get_qc_inputs(source)) > 0
-        ]
 
-        if active_qc_dt:
-            targets.extend(
-                expand(
-                    [
-                        pjoin(
-                            config["output_path"]["qc"],
-                            "Report_QC_final_{source}.pdf",
-                        ),
-                        pjoin(
-                            config["output_path"]["parquet"],
-                            "qc",
-                            "report_qc_final_{source}.parquet",
-                        ),
-                    ],
-                    source=active_qc_dt,
-                )
+    return targets
+
+
+def heatmap_abundance():
+    # Correction : on vérifie 'run_heatmap' (conformément au config.yaml)
+    if not (is_enabled("heatmap_abundance") and is_enabled("phyloseq")):
+        return []
+
+    targets = []
+    sources = config.get("datatypes", {}).get("heatmap", {}).get("abundance", [])
+
+    for source in filter_active_sources(sources):
+        source_ranks = get_ranks_for_source(source, plot_type="heatmap_abundance")
+        targets.extend(
+            expand(
+                [
+                    pjoin(config["output_path"]["plots"], "heatmap", "{source}", "Heatmap_{source}_{rank}.pdf"),
+                    pjoin(config["output_path"]["parquet"], "heatmap", "heatmap_{source}_{rank}.parquet"),
+                ],
+                source=source,
+                rank=source_ranks,
             )
+        )
+
+    return targets
+
+
+def heatmap_deseq2():
+    if not (is_enabled("heatmap_deseq2") and is_enabled("phyloseq") and is_enabled("deseq2")):
+        return []
+
+    targets = []
+    for source in filter_active_sources(config["datatypes"]["heatmap"]["deseq2"]):
+        # Taxonomic ranks are automatically retrieved for reads/contigs
+        # and only gene_description for KEGG
+        source_ranks = get_ranks_for_source(source, plot_type="heatmap_deseq2")
+
+        targets.extend(
+            expand(
+                [
+                    pjoin(config["output_path"]["plots"], "heatmap", "{source}", "Heatmap_deseq2_{source}_{rank}.pdf"),
+                    pjoin(config["output_path"]["parquet"], "heatmap", "heatmap_deseq2_{source}_{rank}.parquet"),
+                ],
+                source=source,
+                rank=source_ranks,
+            )
+        )
+
+    return targets
+
+
+def pca():
+    if not (is_enabled("pca") and is_enabled("phyloseq")):
+        return []
+
+    targets = []
+    for source in filter_active_sources(config["datatypes"]["pca"]):
+        # Taxonomic ranks are automatically retrieved for reads/contigs
+        # and only gene_description for KEGG
+        source_ranks = get_ranks_for_source(source, plot_type="pca")
+
+        targets.extend(
+            expand(
+                [
+                    pjoin(config["output_path"]["plots"], "pca", "{source}", "PCA_{source}_{rank}.pdf"),
+                    pjoin(config["output_path"]["parquet"], "pca", "pca_{source}_{rank}.parquet"),
+                    pjoin(config["output_path"]["plots"], "pca", "pca_contributions_{source}_{rank}.xlsx"),
+                ],
+                source=source,
+                rank=source_ranks,
+            )
+        )
+
+    return targets
+
+def volcano():
+    if not (is_enabled("volcano") and is_enabled("deseq2")):
+        return []
+        
+    targets = []
+    for source in filter_active_sources(config["datatypes"]["volcano"]):
+        # Taxonomic ranks are automatically retrieved for reads/contigs
+        # and only gene_description for KEGG
+        source_ranks = get_ranks_for_source(source, plot_type="volcano")
+
+        targets.extend(
+            expand(
+                [
+                    pjoin(config["output_path"]["plots"], "volcano", "{source}", "Volcano_{source}_{rank}.pdf"),
+                    pjoin(config["output_path"]["parquet"], "volcano", "volcano_{source}_{rank}.parquet"),
+                ],
+                source=source,
+                rank=source_ranks,
+            )
+        )
+
+    return targets
+
+def permanova_analysis():
+    if not is_enabled("permanova"):
+        return []
+        
+    sources = config["datatypes"]["permanova"]
+    active_sources = filter_active_sources(sources)
+    if not active_sources:
+        return []
+
+    return expand(
+        [
+            pjoin(config["output_path"]["permanova"], "{source}", "Permanova_{source}.pdf"),
+            pjoin(config["output_path"]["parquet"], "permanova", "permanova_{source}.parquet"),
+        ],
+        source=active_sources,
+    )
+
+def deseq2_analysis():
+    if not is_enabled("deseq2"):
+        return []
+        
+    sources = config["datatypes"]["deseq2"]
+    active_sources = filter_active_sources(sources)
+    if not active_sources:
+        return []
+
+    return expand(
+        [
+            pjoin(config["output_path"]["rds"], "{source}", "deseq2_{source}.rds"),
+            pjoin(config["output_path"]["parquet"], "deseq2", "deseq2_{source}.parquet"),
+        ],
+        source=active_sources,
+    )
+
+def phyloseq_analysis():
+    if not is_enabled("phyloseq"):
+        return []
+        
+    targets = []
+    sources = config["datatypes"]["phyloseq"]
+    active_sources = filter_active_sources(sources)
+
+    for source in active_sources:
+        ranks = config["plots"]["shared"]["rank"].get(source, [])
+        if isinstance(ranks, str):
+            ranks = [ranks]
+        targets.extend(
+            expand(
+                pjoin(config["output_path"]["rds"], "{source}", "phyloseq_{source}_{rank}.rds"),
+                source=source,
+                rank=ranks,
+            )
+        )
+
+    return targets
+
+def qc():
+    if not is_enabled("qc"):
+        return []
+    datatypes = list(QC_STEPS.keys())
+    active_qc_dt = [source for source in filter_active_sources(datatypes) if len(get_qc_inputs(source)) > 0]
+    if not active_qc_dt:
+        return []
+    return expand(
+        [
+            pjoin(config["output_path"]["qc"], "Report_QC_final_{source}.pdf"),
+            pjoin(config["output_path"]["parquet"], "qc", "report_qc_final_{source}.parquet"),
+        ],
+        source=active_qc_dt,
+    )
+
+def get_all_benchmarks(wildcards):
+    if not is_enabled("benchmarks"):
+        return []
+    benchmarks = set()
+
+    stacked_cfg = config.get("datatypes", {}).get("stackedbarplot", {})
+    stacked_modes = dict(stacked_cfg.get("abundance", {}))
+    if "deseq2" in stacked_cfg:
+        stacked_modes["deseq2"] = stacked_cfg["deseq2"]
+
+    for rule in workflow.rules:
+        if not rule.benchmark:
+            continue
+
+        pattern = re.sub(r"\{(\w+)(?:,[^}]*)?\}", r"{\1}", str(rule.benchmark))
+        names = set(re.findall(r"\{(\w+)\}", pattern))
+
+        if not names:
+            benchmarks.add(pattern)
+            continue
+
+        kwargs = {}
+
+        # 1. Gestion de 'mode'
+        if "mode" in names:
+            kwargs["mode"] = list(stacked_modes.keys())
+
+        # 2. Gestion de 'source'
+        if "source" in names:
+            datatype_key = RULE_DATATYPE_MAP.get(rule.name, "phyloseq")
+            sources = config.get("datatypes", {}).get(datatype_key, BASE_SOURCES)
+            active_sources = filter_active_sources(sources)
+            if not active_sources:
+                continue
+            kwargs["source"] = active_sources
+
+        # 3. Gestion de 'rank'
+        if "rank" in names:
+            sources_to_check = kwargs.get("source", BASE_SOURCES)
+            all_ranks = set()
+            for src in sources_to_check:
+                r = config.get("plots", {}).get("shared", {}).get("rank", {}).get(src, ["all"])
+                if isinstance(r, str):
+                    all_ranks.add(r)
+                else:
+                    all_ranks.update(r)
+            kwargs["rank"] = list(all_ranks)
+
+        # 4. Gestion de 'sample'
+        if "sample" in names:
+            kwargs["sample"] = SAMPLES
+
+        # S'assurer que tous les wildcards de la règle ont bien une valeur attribuée
+        if names.issubset(kwargs.keys()):
+            benchmarks.update(expand(pattern, **kwargs))
+
+    return sorted(benchmarks)
+
+# ==========================================================================
+# Cibles finales
+# ==========================================================================
+
+def get_targets():
+    targets = []
+
+    # Collect targets sequentially from modular helper functions
+    targets += taxonomy()
+    targets += reads()
+    targets += contigs()
+    targets += kegg()
+
+    # Plots
+    targets += stackedbarplot_abundance()
+    targets += stackedbarplot_deseq2()
+    targets += heatmap_abundance()
+    targets += heatmap_deseq2()
+    targets += pca()
+    targets += volcano()
+    targets += physico()
+
+    # Statistical Analyses & Data objects
+    targets += permanova_analysis()
+    targets += deseq2_analysis()
+    targets += phyloseq_analysis()
+
+    # Quality Control
+    #targets += qc()
+
+    return targets
 
 #    if config.get("run_shiny", False):       
 #        targets.extend(
@@ -372,12 +561,12 @@ def get_targets():
 #            )
 #        )
 
-    return targets
+#    return targets
 
 rule all:
     input:
         #config["output_path"]["audit"],
-        "benchmarks/summary_benchmarks.csv",
+        #"benchmarks/summary_benchmarks.csv",
         get_targets()
 # ==========================================================================
 # UTILS — Taxonomy and input_pathways
@@ -454,7 +643,7 @@ rule run_plot_qc:
 
 
 # ==========================================================================
-# READS — 3 étapes
+# READS — 4 étapes
 # ==========================================================================
 
 
@@ -494,13 +683,26 @@ rule reads_CPM:
     input:
         data=READS_TREATMENT + "2.Filtered/filtered_{sample}_reads.tsv"
     output:
-        cpm=READS_TREATMENT + "3.CPM/cpm_{sample}_reads.tsv"
+        cpm=READS_TREATMENT + "3.CPM/cpm_{sample}_reads.tsv",
     benchmark:
         "benchmarks/reads/{sample}_cpm.tsv"
     conda:
         "envs/py_env.yaml"
     script:
         os.path.abspath("workflow/scripts/reads/03_Reads_CPM.py")
+
+rule reads_create_matrix:
+    input:
+        data=READS_TREATMENT + "3.CPM/cpm_{sample}_reads.tsv",
+    output:
+        matrix_deseq=READS_TREATMENT + "Matrix/Deseq/matrix_deseq_{sample}_reads.tsv",
+        matrix_phyloseq=READS_TREATMENT + "Matrix/Phyloseq/matrix_phyloseq_{sample}_reads.tsv"
+    benchmark:
+        "benchmarks/reads/{sample}_create_matrix.tsv"
+    conda:
+        "envs/py_env.yaml"
+    script:
+        os.path.abspath("workflow/scripts/reads/04_Reads_create_matrix.py")
 
 
 # ==========================================================================
@@ -633,24 +835,24 @@ rule kegg_extraction:
         os.path.abspath("workflow/scripts/kegg/01_Kegg_extraction.py")
 
 
-rule kegg_intersec_count:
+rule kegg_union_count:
     input:
         data=KEGG_TREATMENT + "1.Extracted/extracted_{sample}_kegg.tsv",
         counted=CONTIGS_TREATMENT + "1.Counted/counted_{sample}_contigs.tsv"
     output:
-        intersec=KEGG_TREATMENT + "2.Intersected/intersected_{sample}_kegg.tsv",
+        union=KEGG_TREATMENT + "2.Union/union_{sample}_kegg.tsv",
         matrix_deseq=KEGG_TREATMENT + "Matrix/Deseq/matrix_deseq_{sample}_kegg.tsv"
     benchmark:
-        "benchmarks/kegg/{sample}_intersec_count.tsv"
+        "benchmarks/kegg/{sample}_union_count.tsv"
     conda:
         "envs/py_env.yaml"
     script:
-        os.path.abspath("workflow/scripts/kegg/02_Kegg_count_intersec_and_aggregate.py")
+        os.path.abspath("workflow/scripts/kegg/02_Kegg_count_union_and_aggregate.py")
 
 
 rule kegg_rpkm:
     input:
-        data=KEGG_TREATMENT + "2.Intersected/intersected_{sample}_kegg.tsv"
+        data=KEGG_TREATMENT + "2.Union/union_{sample}_kegg.tsv"
     output:
         rpkm=KEGG_TREATMENT + "3.RPKM/rpkm_{sample}_kegg.tsv",
         matrix_phyloseq=KEGG_TREATMENT + "Matrix/Phyloseq/matrix_phyloseq_{sample}_kegg.tsv"
@@ -667,165 +869,227 @@ rule kegg_rpkm:
 # ==========================================================================
 
 
-rule plot_stackedbarplot:
+rule plot_stackedbarplot_abundance:
     input:
-        data=get_graphs_input,
-        metadata=config["input_path"]["metadata"],
-        taxonomy=lambda w: TAXONOMY[w.source],
-        title_resolver = config["title_resolver"]
+        phyloseq_obj=pjoin(
+            config["output_path"]["rds"], "{source}", "phyloseq_{source}_{rank}.rds"
+        ),
     output:
         pdf=pjoin(
             config["output_path"]["plots"],
-            "stackedbarplot",
+            "stackedbarplot_abundance",
             "{mode}",
-            "Stackedbarplot_{mode}_{source}.pdf",
+            "Stackedbarplot_{mode}_{source}_{rank}.pdf",
         ),
         parquet=pjoin(
             config["output_path"]["parquet"],
-            "stackedbarplot",
-            "stackedbarplot_{mode}_{source}.parquet",
-        )
+            "stackedbarplot_abundance",
+            "stackedbarplot_{mode}_{source}_{rank}.parquet",
+        ),
+    benchmark:
+        "benchmarks/{source}/{mode}_stackedbarplot_{rank}.tsv"
     wildcard_constraints:
-        # Prevents the {mode} and {source} wildcards from matching the word “deseq2” and “kegg_stand”
-        mode = "(?!deseq2)[a-zA-Z0-9_]+",
+        mode="|".join(config["datatypes"]["stackedbarplot"]["abundance"].keys()),
+        source="reads|contigs|kegg",
+        rank="[a-zA-Z0-9_]+",
     conda:
         "envs/r_env.yaml"
     params:
-        language=config["language"],
         shared=config["plots"]["shared"],
+        title_template=lambda w: get_text("TITLE_STACKEDBARPLOT_ABUNDANCE"),
+        subtitle_template=lambda w: get_text("SUBTITLE_STACKEDBARPLOT_ABUNDANCE"),
+        text_scope_all=lambda w: get_text("all"),
+        text_scope_each=lambda w: get_text("each"),
         mode=lambda w: w.mode,
-        top_n=config["plots"]["stackedbarplot"]["top_n"],
-        stand_col=lambda w: PLOT_PARAMS[w.source]["stand_col"],
-        rank=lambda w: config["plots"]["shared"]["rank"][w.source],
+        top_n=config["plots"]["stackedbarplot_abundance"]["top_n"],
+        stand_col=lambda w: METRIC_PARAMS["normalized"][w.source]["stand_col"],
+        rank=lambda w: w.rank,
     script:
         os.path.abspath("workflow/scripts/plots/Stackedbarplot_abundance.R")
 
 
 rule plot_stackedbarplot_deseq2:
     input:
-        deseq_files=pjoin(                                                                                                             
+        deseq_files=pjoin(
             config["output_path"]["rds"], "{source}", "deseq2_{source}.rds"
         ),
         phyloseq_obj=pjoin(
-            config["output_path"]["rds"], "{source}", "phyloseq_{source}.rds"
+            config["output_path"]["rds"], "{source}", "phyloseq_{source}_{rank}.rds"
         ),
-        metadata=config["input_path"]["metadata"]
     output:
         pdf=pjoin(
             config["output_path"]["plots"],
             "stackedbarplot",
             "deseq2",
-            "Stackedbarplot_deseq2_{source}.pdf",
+            "Stackedbarplot_deseq2_{source}_{rank}.pdf",
         ),
         parquet=pjoin(
-            config["output_path"]["parquet"], 
-            "stackedbarplot",   
-            "stackedbarplot_deseq2_{source}.parquet"
-        )
+            config["output_path"]["parquet"],
+            "stackedbarplot",
+            "stackedbarplot_deseq2_{source}_{rank}.parquet",
+        ),
+    benchmark:
+        "benchmarks/{source}/stackedbarplot_deseq2_{rank}.tsv"
+    wildcard_constraints:
+        source="reads|contigs|kegg",
+        rank="[a-zA-Z0-9_]+",
     conda:
         "envs/r_env.yaml"
     params:
         shared=config["plots"]["shared"],
-        title=lambda w: config["plots"]["stackedbarplot_deseq2"]["title"],
-        subtitle=lambda w: config["plots"]["stackedbarplot_deseq2"]["subtitle"],
+        title_template=lambda w: get_text("TITLE_STACKEDBARPLOT_DESEQ2"),
+        subtitle_template=lambda w: get_text("SUBTITLE_STACKEDBARPLOT_DESEQ2"),
         contrast=config["deseq2"]["contrast"],
         padj=config["plots"]["stackedbarplot_deseq2"]["contrasts_values"]["padj_threshold"],
         lfc=config["plots"]["stackedbarplot_deseq2"]["contrasts_values"]["lfc_threshold"],
         top_n=config["plots"]["stackedbarplot_deseq2"]["top_n"],
-        rank=lambda w: config["plots"]["shared"]["rank"][w.source],
+        rank=lambda w: w.rank,
     script:
         os.path.abspath("workflow/scripts/plots/Stackedbarplot_from_DESeq2.R")
 
 
-rule plot_heatmap:
+rule plot_heatmap_abundance:
     input:
         phyloseq_obj=pjoin(
-            config["output_path"]["rds"], "{source}", "phyloseq_{source}.rds"
+            config["output_path"]["rds"], "{source}", "phyloseq_{source}_{rank}.rds"
         ),
-        title_resolver = config["title_resolver"]
     output:
         pdf=pjoin(
             config["output_path"]["plots"],
             "heatmap",
             "{source}",
-            "Heatmap_{source}.pdf",
+            "Heatmap_{source}_{rank}.pdf",
         ),
-        parquet=pjoin(config["output_path"]["parquet"], "heatmap", "heatmap_{source}.parquet")
+        parquet=pjoin(config["output_path"]["parquet"], "heatmap", "heatmap_{source}_{rank}.parquet"),
+    benchmark:
+        "benchmarks/{source}/heatmap_abundance_{rank}.tsv"
+    wildcard_constraints:
+        source="reads|contigs|kegg",
+        rank="[a-zA-Z0-9_]+",
     conda:
         "envs/r_env.yaml"
     params:
-        language=config["language"],
         shared=config["plots"]["shared"],
+        title_template=lambda w: get_text("TITLE_HEATMAP"),
+        subtitle_template=lambda w: get_text("SUBTITLE_HEATMAP"),
+        text_sample_all=lambda w: get_text("all"),
         top_n=config["plots"]["heatmap"]["top_n"],
         clust_method=config["plots"]["heatmap"]["clust_method"],
         distance_method=config["plots"]["heatmap"]["distance_method"],
-        rank=lambda w: config["plots"]["shared"]["rank"][w.source],
+        rank=lambda w: w.rank,
     script:
-        os.path.abspath("workflow/scripts/plots/Heatmap.R")
+        os.path.abspath("workflow/scripts/plots/Heatmap_abundance.R")
 
 
-rule plot_pca:
-    input:
-        data=get_graphs_input,
-        metadata=config["input_path"]["metadata"],
-        physico=config["input_path"]["physico_params"],
-        taxonomy=lambda w: TAXONOMY[w.source],
-        title_resolver = config["title_resolver"]
-    output:
-        pdf=pjoin(config["output_path"]["plots"], "pca", "PCA_{source}.pdf"),
-        parquet=pjoin(config["output_path"]["parquet"], "pca", "pca_{source}.parquet"),
-        xlsx=pjoin(config["output_path"]["plots"], "pca", "pca_contributions_{source}.xlsx")
-    conda:
-        "envs/r_env.yaml"
-    params:
-        language=config["language"],
-        shared=config["plots"]["shared"],
-        title=lambda w: config["plots"]["pca"]["title"],
-        subtitle=lambda w: config["plots"]["pca"]["subtitle"],
-        top_n=config["plots"]["pca"]["top_n"],
-        dim_x=config["plots"]["pca"]["dim_x"],
-        dim_y=config["plots"]["pca"]["dim_y"],
-        physico_col=config["plots"]["pca"]["physico_col"],
-        stand_col=lambda w: PLOT_PARAMS[w.source]["stand_col"],
-        point_size=config["plots"]["pca"]["point_size"],
-        rank=lambda w: config["plots"]["shared"]["rank"][w.source],
-    script:
-        os.path.abspath("workflow/scripts/plots/PCA.R")
-
-
-rule plot_volcano_DESeq2:
+rule plot_heatmap_deseq2:
     input:
         deseq_files=pjoin(
             config["output_path"]["rds"], "{source}", "deseq2_{source}.rds"
         ),
         phyloseq_obj=pjoin(
-            config["output_path"]["rds"], "{source}", "phyloseq_{source}.rds"
+            config["output_path"]["rds"], "{source}", "phyloseq_{source}_{rank}.rds"
+        ),
+    output:
+        pdf=pjoin(
+            config["output_path"]["plots"],
+            "heatmap",
+            "{source}",
+            "Heatmap_deseq2_{source}_{rank}.pdf",
+        ),
+        parquet=pjoin(config["output_path"]["parquet"], "heatmap", "heatmap_deseq2_{source}_{rank}.parquet"),
+    benchmark:
+        "benchmarks/{source}/heatmap_deseq2_{rank}.tsv"
+    wildcard_constraints:
+        source="reads|contigs|kegg",
+        rank="[a-zA-Z0-9_]+",
+    conda:
+        "envs/r_env.yaml"
+    params:
+        shared=config["plots"]["shared"],
+        title_template=lambda w: get_text("TITLE_HEATMAP_DESEQ2"),
+        subtitle_template=lambda w: get_text("SUBTITLE_HEATMAP_DESEQ2"),
+        contrast=config["deseq2"]["contrast"],
+        padj=config["plots"]["heatmap_deseq2"]["contrasts_values"]["padj_threshold"],
+        lfc=config["plots"]["heatmap_deseq2"]["contrasts_values"]["lfc_threshold"],
+        top_n=config["plots"]["heatmap_deseq2"]["top_n"],
+        group_by=config["plots"]["heatmap_deseq2"]["group_by"],
+        clust_method=config["plots"]["heatmap_deseq2"]["clust_method"],
+        distance_method=config["plots"]["heatmap_deseq2"]["distance_method"],
+        rank=lambda w: w.rank,
+    script:
+        os.path.abspath("workflow/scripts/plots/Heatmap_from_DESeq2.R")
+
+
+rule plot_pca:
+    input:
+        phyloseq_obj=pjoin(
+            config["output_path"]["rds"], "{source}", "phyloseq_{source}_{rank}.rds"
+        ),
+        physico=config["input_path"]["physico_params"],
+    output:
+        pdf=pjoin(config["output_path"]["plots"], "pca", "{source}", "PCA_{source}_{rank}.pdf"),
+        xlsx=pjoin(config["output_path"]["plots"], "pca", "pca_contributions_{source}_{rank}.xlsx"),
+        parquet=pjoin(config["output_path"]["parquet"], "pca", "pca_{source}_{rank}.parquet"),
+    benchmark:
+        "benchmarks/{source}/pca_{rank}.tsv"
+    wildcard_constraints:
+        source="reads|contigs|kegg",
+        rank="[a-zA-Z0-9_]+",
+    conda:
+        "envs/r_env.yaml"
+    params:
+        shared=config["plots"]["shared"],
+        title_template=lambda w: get_text("TITLE_PCA"),
+        subtitle_template=lambda w: get_text("SUBTITLE_PCA"),
+        top_n=config["plots"]["pca"]["top_n"],
+        dim_x=config["plots"]["pca"]["dim_x"],
+        dim_y=config["plots"]["pca"]["dim_y"],
+        physico_col=config["plots"]["pca"]["physico_col"],
+        stand_col=lambda w: METRIC_PARAMS["normalized"][w.source]["stand_col"],
+        point_size=config["plots"]["pca"]["point_size"],
+        rank=lambda w: w.rank,
+    script:
+        os.path.abspath("workflow/scripts/plots/PCA.R")
+
+
+rule plot_volcano:
+    input:
+        deseq_files=pjoin(
+            config["output_path"]["rds"], "{source}", "deseq2_{source}.rds"
+        ),
+        phyloseq_obj=pjoin(
+            config["output_path"]["rds"], "{source}", "phyloseq_{source}_{rank}.rds"
         ),
     output:
         pdf=pjoin(
             config["output_path"]["plots"],
             "volcano",
             "{source}",
-            "Volcano_deseq2_{source}.pdf",
+            "Volcano_{source}_{rank}.pdf",
         ),
         parquet=pjoin(
             config["output_path"]["parquet"],
             "volcano",
-            "volcano_from_deseq2_{source}.parquet",
-        )
+            "volcano_{source}_{rank}.parquet",
+        ),
+    benchmark:
+        "benchmarks/{source}/volcano_{rank}.tsv"
+    wildcard_constraints:
+        source="reads|contigs|kegg",
+        rank="[a-zA-Z0-9_]+",
     conda:
         "envs/r_env.yaml"
     params:
         shared=config["plots"]["shared"],
-        title=lambda w: config["plots"]["volcano"]["title"],
-        subtitle=lambda w: config["plots"]["volcano"]["subtitle"],
+        title_template=lambda w: get_text("TITLE_VOLCANO"),
+        subtitle_template=lambda w: get_text("SUBTITLE_VOLCANO"),
         contrast=config["deseq2"]["contrast"],
-        padj=config["plots"]["stackedbarplot_deseq2"]["contrasts_values"]["padj_threshold"],
-        lfc=config["plots"]["stackedbarplot_deseq2"]["contrasts_values"]["lfc_threshold"],
+        padj=config["plots"]["volcano"]["contrasts_values"]["padj_threshold"],
+        lfc=config["plots"]["volcano"]["contrasts_values"]["lfc_threshold"],
         top_n=config["plots"]["volcano"]["top_n"],
-        rank=lambda w: config["plots"]["shared"]["rank"][w.source],
+        rank=lambda w: w.rank,
     script:
-        os.path.abspath("workflow/scripts/plots/Volcano_from_DESeq2.R")
+        os.path.abspath("workflow/scripts/plots/Volcano.R")
 
 
 rule plot_physico:
@@ -836,6 +1100,8 @@ rule plot_physico:
         parquet=pjoin(
             config["output_path"]["parquet"], "physico", "physico_plot.parquet"
         )
+    benchmark:
+        "benchmarks/physico.tsv"
     conda:
         "envs/r_env.yaml"
     script:
@@ -846,14 +1112,40 @@ rule plot_physico:
 # DESEQ2 + PHYLOSEQ
 # ==========================================================================
 
+rule run_permanova:
+    input:
+        data=get_permanova_inputs,
+        metadata=config["input_path"]["metadata"],
+    output:
+        pdf=pjoin(config["output_path"]["permanova"], "{source}", "Permanova_{source}.pdf"),
+        xlsx=pjoin(config["output_path"]["permanova"], "{source}", "permanova_stat_{source}.xlsx"),
+        parquet=pjoin(
+            config["output_path"]["parquet"], "permanova", "permanova_{source}.parquet"
+        )
+    benchmark:
+        "benchmarks/{source}/permanova.tsv"
+    conda:
+        "envs/r_env.yaml"
+    params:
+        shared=config["plots"]["shared"],
+        stand_col = lambda wc: get_permanova_params(wc)["stand_col"],
+        effect=config["permanova"]["effect"],
+        distance_method=config["permanova"]["distance_method"],
+        use_clr=config["permanova"]["use_clr"],
+        permutation=config["permanova"]["permutation"],
+    script:
+        os.path.abspath("workflow/scripts/analysis/Permanova.R")
+
+
 rule run_deseq2:
     input:
-        data=lambda w: TREATMENT_SOURCES[f"{w.source}_deseq"],
+        data=lambda w: TREATMENT_SOURCES[f"{w.source}_counts"],
         metadata=config["input_path"]["metadata"],
-        taxonomy=lambda w: TAXONOMY[w.source],
     output:
         rds=pjoin(config["output_path"]["rds"], "{source}", "deseq2_{source}.rds"),
         parquet=pjoin(config["output_path"]["parquet"], "deseq2", "deseq2_{source}.parquet")
+    benchmark:
+        "benchmarks/{source}/deseq2.tsv"
     conda:
         "envs/r_env.yaml"
     params:
@@ -865,22 +1157,47 @@ rule run_deseq2:
     script:
         os.path.abspath("workflow/scripts/analysis/DESeq2.R")
 
-
-
-rule run_phyloseq:
+rule run_phyloseq_other:
     input:
-        data=lambda w: TREATMENT_SOURCES[f"{w.source}_phyloseq"],
+        data=lambda w: TREATMENT_SOURCES[f"{w.source}_normalized"],
         metadata=config["input_path"]["metadata"],
         taxonomy=lambda w: TAXONOMY[w.source],
     output:
-        rds=pjoin(config["output_path"]["rds"], "{source}", "phyloseq_{source}.rds")
+        rds=pjoin(config["output_path"]["rds"], "{source}", "phyloseq_{source}_{rank}.rds")
+    benchmark:
+        "benchmarks/{source}/phyloseq_{source}_{rank}.tsv"
+    wildcard_constraints:
+        # Avoid a conflict (AmbiguousRuleException) with the KEGG rule
+        source="reads|contigs"
     params:
-        stand_col=lambda w: PLOT_PARAMS[w.source]["stand_col"],
+        source=lambda w: w.source,
+        stand_col=lambda w: METRIC_PARAMS["normalized"][w.source]["stand_col"],
+        rank=lambda w: w.rank
     conda:
         "envs/r_env.yaml"
     script:
         os.path.abspath("workflow/scripts/analysis/Phyloseq.R")
 
+
+rule run_phyloseq_kegg:
+    input:
+        data=lambda w: TREATMENT_SOURCES["kegg_normalized"],
+        metadata=config["input_path"]["metadata"],
+        taxonomy=lambda w: TAXONOMY["kegg"],
+    output:
+        rds=pjoin(config["output_path"]["rds"], "kegg", "phyloseq_kegg_{rank}.rds"),
+    benchmark:
+        "benchmarks/kegg/phyloseq_kegg_{rank}.tsv"
+    wildcard_constraints:
+        rank="level_3|gene_description" # Ensures {rank} only matches valid KEGG ranks
+    params:
+        source="kegg",
+        stand_col=lambda w: METRIC_PARAMS["normalized"]["kegg"]["stand_col"],
+        rank=lambda w: w.rank,  # Passes "ko" or "pathway" to R
+    conda:
+        "envs/r_env.yaml"
+    script:
+        os.path.abspath("workflow/scripts/analysis/Phyloseq.R")
 
 # ==========================================================================
 # SHINY MASTER PARQUET by Analyse

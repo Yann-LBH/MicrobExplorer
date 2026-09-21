@@ -1,10 +1,11 @@
-################################################################################
-# Project : "MicrobExplorer"
-# Script: "Utils Format Megahit Table"
-# Author: "Yann Le Bihan"
-# Date: "2025-12-01"
-# Link : https://github.com/Yann-LBH/MicrobExplorer
-################################################################################
+# ==============================================================================
+# PROJECT   : MicrobExplorer
+# SCRIPT    : utils_format_MegahitTbale.py
+# PURPOSE   : Format Megahit Table for pipeline compliance
+# AUTHOR    : Yann Le Bihan
+# DATE      : 2026-09-03
+# LINK      : https://github.com/Yann-LBH/MicrobExplorer
+# ==============================================================================
 
 import logging
 import pandas as pd
