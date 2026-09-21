@@ -51,6 +51,7 @@ MicrobExplorer/
 ├── run_pipeline.sh          # Shell wrapper to execute the core pipeline
 ├── run_shiny.sh             # Shell wrapper to launch the interactive GUI
 └── README.md
+```
 
 ---
 
